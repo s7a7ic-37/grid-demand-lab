@@ -40,20 +40,21 @@ def fit_model(training: pd.DataFrame) -> LGBMRegressor:
     return model
 
 
-def evaluate(data: pd.DataFrame, holdout_days: int = 28) -> dict[str, float]:
+def evaluate(data: pd.DataFrame, holdout_days: int = 28) -> tuple[dict[str, float | str], LGBMRegressor]:
     featured = make_features(data)
     cutoff = featured["date"].max().normalize() - pd.Timedelta(days=holdout_days - 1)
     train, test = featured[featured["date"] < cutoff], featured[featured["date"] >= cutoff]
     if train.empty or test.empty:
         raise ValueError("Not enough history for a time-based holdout.")
     model = fit_model(train)
-    return {
+    metrics = {
         "model_mae": mean_absolute_error(test["demand_mw"], model.predict(test[FEATURES])),
         "day_mae": mean_absolute_error(test["demand_mw"], test["lag_day"]),
         "week_mae": mean_absolute_error(test["demand_mw"], test["lag_week"]),
         "holdout_start": cutoff.strftime("%Y-%m-%d"),
         "holdout_end": test["date"].max().strftime("%Y-%m-%d"),
     }
+    return metrics, model
 
 
 def forecast_day(data: pd.DataFrame, model: LGBMRegressor, date: str) -> pd.DataFrame:

@@ -1,6 +1,6 @@
 # Grid Demand Lab
 
-A half-hourly Great Britain electricity demand forecast, replayed against historical days. LightGBM is compared with simple same-time yesterday and last week baselines on a held-out final four weeks.
+A half-hourly Great Britain electricity demand forecast, replayed against held-out historical days. LightGBM is compared with simple same-time yesterday and last week baselines on the final four weeks. The replay uses the model trained only before that holdout.
 
 Data: NESO Historic Demand Data 2025 (`ND`, MW), provided under the NESO Open Data Licence. NESO may revise published values.
 

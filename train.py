@@ -1,17 +1,16 @@
 import json
 from pathlib import Path
 
-from forecast import evaluate, fit_model, make_features, load_demand
+from forecast import evaluate, load_demand
 
 ROOT = Path(__file__).parent
 
 
 def main() -> None:
     data = load_demand(ROOT / "data" / "demand_2025.csv")
-    metrics = evaluate(data)
-    final_model = fit_model(make_features(data))
+    metrics, holdout_model = evaluate(data)
     (ROOT / "models").mkdir(exist_ok=True)
-    final_model.booster_.save_model(str(ROOT / "models" / "demand_model.txt"))
+    holdout_model.booster_.save_model(str(ROOT / "models" / "demand_model.txt"))
     (ROOT / "models" / "metrics.json").write_text(json.dumps(metrics, indent=2) + "\n")
     print(json.dumps(metrics, indent=2))
 

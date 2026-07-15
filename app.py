@@ -29,7 +29,10 @@ def get_metrics() -> dict:
 data = get_data()
 model = get_model()
 metrics = get_metrics()
-dates = sorted(data["date"].dt.strftime("%Y-%m-%d").unique())
+dates = sorted(data.loc[
+    data["date"].between(metrics["holdout_start"], metrics["holdout_end"]),
+    "date",
+].dt.strftime("%Y-%m-%d").unique())
 
 st.title("Grid Demand Lab")
 st.caption("A small forecasting workbench for Great Britain’s half-hourly electricity demand.")
@@ -44,6 +47,6 @@ right.metric("Actual mean", f"{result['demand_mw'].mean():,.0f} MW")
 st.line_chart(result.set_index("period")[["demand_mw", "forecast_mw"]])
 st.metric("Holdout MAE · final 28 days", f"{metrics['model_mae']:,.0f} MW",
           f"{(1 - metrics['model_mae'] / metrics['week_mae']) * 100:.0f}% lower than last week")
-st.caption(f"{metrics['holdout_start']} to {metrics['holdout_end']}. LightGBM uses previous-day and previous-week demand with calendar features.")
+st.caption(f"The model was trained before this holdout: {metrics['holdout_start']} to {metrics['holdout_end']}. Features use previous-day and previous-week demand.")
 st.caption("Replay only: this view compares historical forecasts with known demand. It is not a live system forecast.")
 st.link_button("NESO data and licence", "https://www.neso.energy/data-portal/historic-demand-data")
