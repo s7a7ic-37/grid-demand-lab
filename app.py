@@ -49,12 +49,19 @@ official = neso_forecast[neso_forecast["date"].eq(target_date)][["period", "dema
 result = predicted.merge(official, on="period", how="left", suffixes=("", "_neso"))
 result = result.rename(columns={"demand_mw": "neso_forecast_mw"})
 
-st.metric(f"Model forecast · {target_date:%d %b}", f"{result['forecast_mw'].mean():,.0f} MW")
-if result["neso_forecast_mw"].notna().any():
+st.metric(f"Average demand · {target_date:%d %b}", f"{result['forecast_mw'].mean():,.0f} MW")
+neso_count = int(result["neso_forecast_mw"].notna().sum())
+if neso_count:
     st.metric("NESO forecast · same day", f"{result['neso_forecast_mw'].mean():,.0f} MW")
+    if neso_count < 48:
+        st.caption(f"NESO has published {neso_count} of 48 half-hour forecasts for this day.")
 else:
     st.caption("NESO’s forecast values are currently missing; showing the model forecast on its own.")
-st.line_chart(result.set_index("period")[["forecast_mw", "neso_forecast_mw"]])
+chart = result.set_index("period")[["forecast_mw"]].rename(columns={"forecast_mw": "Model forecast"})
+chart.index.name = "Half-hour settlement period"
+if neso_count:
+    chart["NESO forecast"] = result.set_index("period")["neso_forecast_mw"]
+st.line_chart(chart, y_label="Demand (MW)", width="stretch")
 fallback_count = int(predicted["used_weekly_fallback"].sum())
 if fallback_count:
     st.caption(f"Used last week’s matching periods where today’s feed has not filled {fallback_count} half-hour readings yet.")
