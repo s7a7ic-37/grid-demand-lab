@@ -5,15 +5,15 @@ import pandas as pd
 import streamlit as st
 from lightgbm import Booster
 
-from forecast import forecast_day, load_demand
+from forecast import fetch_live_demand, forecast_day
 
 ROOT = Path(__file__).parent
 st.set_page_config(page_title="Grid Demand Lab", page_icon="⚡", layout="wide")
 
 
-@st.cache_data
-def get_data() -> pd.DataFrame:
-    return load_demand(ROOT / "data" / "demand_2025.csv")
+@st.cache_data(ttl=21600)
+def get_live_data() -> tuple[pd.DataFrame, pd.DataFrame]:
+    return fetch_live_demand()
 
 
 @st.cache_resource
@@ -26,27 +26,39 @@ def get_metrics() -> dict:
     return json.loads((ROOT / "models" / "metrics.json").read_text())
 
 
-data = get_data()
+if st.button("Refresh live data"):
+    get_live_data.clear()
+    st.rerun()
+
+with st.spinner("Loading the latest NESO demand data…"):
+    try:
+        actual_data, neso_forecast = get_live_data()
+    except Exception:
+        st.error("NESO’s live feed could not be loaded. Try refreshing in a moment.")
+        st.stop()
 model = get_model()
 metrics = get_metrics()
-dates = sorted(data.loc[
-    data["date"].between(metrics["holdout_start"], metrics["holdout_end"]),
-    "date",
-].dt.strftime("%Y-%m-%d").unique())
+latest_date = actual_data["date"].max().normalize()
+target_date = latest_date + pd.DateOffset(days=1)
 
 st.title("Grid Demand Lab")
-st.caption("A small forecasting workbench for Great Britain’s half-hourly electricity demand.")
-choice = st.selectbox("Replay a day", dates[-28:], index=len(dates[-28:]) - 1)
-actual = data[data["date"].eq(pd.Timestamp(choice))][["period", "demand_mw"]]
-predicted = forecast_day(data, model, choice)
-result = actual.merge(predicted, on="period")
+st.caption("A daily view of Great Britain’s half-hourly electricity demand, with an ML forecast beside NESO’s forecast.")
+st.caption(f"Latest outturn in NESO’s feed: {latest_date:%d %b %Y}. Their published data can arrive several days after settlement.")
+predicted = forecast_day(actual_data, model, target_date.strftime("%Y-%m-%d"))
+official = neso_forecast[neso_forecast["date"].eq(target_date)][["period", "demand_mw"]]
+result = predicted.merge(official, on="period", how="left", suffixes=("", "_neso"))
+result = result.rename(columns={"demand_mw": "neso_forecast_mw"})
 
-left, right = st.columns(2)
-left.metric("Forecast mean", f"{result['forecast_mw'].mean():,.0f} MW")
-right.metric("Actual mean", f"{result['demand_mw'].mean():,.0f} MW")
-st.line_chart(result.set_index("period")[["demand_mw", "forecast_mw"]])
-st.metric("Holdout MAE · final 28 days", f"{metrics['model_mae']:,.0f} MW",
+st.metric(f"Model forecast · {target_date:%d %b}", f"{result['forecast_mw'].mean():,.0f} MW")
+if result["neso_forecast_mw"].notna().any():
+    st.metric("NESO forecast · same day", f"{result['neso_forecast_mw'].mean():,.0f} MW")
+else:
+    st.caption("NESO’s forecast values are currently missing; showing the model forecast on its own.")
+st.line_chart(result.set_index("period")[["forecast_mw", "neso_forecast_mw"]])
+fallback_count = int(predicted["used_weekly_fallback"].sum())
+if fallback_count:
+    st.caption(f"Used last week’s matching periods where today’s feed has not filled {fallback_count} half-hour readings yet.")
+st.metric("Historical holdout MAE · final 28 days of 2025", f"{metrics['model_mae']:,.0f} MW",
           f"{(1 - metrics['model_mae'] / metrics['week_mae']) * 100:.0f}% lower than last week")
-st.caption(f"The model was trained before this holdout: {metrics['holdout_start']} to {metrics['holdout_end']}. Features use previous-day and previous-week demand.")
-st.caption("Replay only: this view compares historical forecasts with known demand. It is not a live system forecast.")
+st.caption(f"2025 holdout: {metrics['holdout_start']} to {metrics['holdout_end']}. The live model uses 2025 history; its inputs are the latest actual outturns.")
 st.link_button("NESO data and licence", "https://www.neso.energy/data-portal/historic-demand-data")

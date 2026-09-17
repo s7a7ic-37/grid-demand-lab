@@ -1,8 +1,8 @@
 # Grid Demand Lab
 
-A half-hourly Great Britain electricity demand forecast, replayed against held-out historical days. LightGBM is compared with simple same-time yesterday and last week baselines on the final four weeks. The replay uses the model trained only before that holdout.
+A live half-hourly Great Britain electricity demand view. It compares a LightGBM next-day forecast against NESO's published forecast. Historical model scores use a separate time-based holdout on 2025 data.
 
-Data: NESO Historic Demand Data 2025 (`ND`, MW), provided under the NESO Open Data Licence. NESO may revise published values.
+Data: NESO's live Demand Data Update feed for the latest outturns and operational forecasts, plus Historic Demand Data 2025 (`ND`, MW) for training and holdout evaluation. Both are provided under the NESO Open Data Licence. Outturns arrive after settlement and can be revised.
 
 ## Run
 
@@ -16,4 +16,4 @@ python train.py
 streamlit run app.py
 ```
 
-`pytest` runs checks for time-safe features, duplicate input rows and missing history. `train.py` writes the model and holdout metrics under `models/`.
+The app fetches the public NESO API at startup and caches it for six hours; use **Refresh live data** to fetch sooner. A partial current day uses the matching periods from last week until today's readings arrive. `pytest` checks time-based features, live feed parsing, duplicate rows and missing history. `train.py` writes the model and holdout metrics under `models/`.

@@ -1,10 +1,14 @@
 from pathlib import Path
+from urllib.parse import urlencode
+from urllib.request import urlopen
 
 import pandas as pd
+import json
 from lightgbm import LGBMRegressor
 from sklearn.metrics import mean_absolute_error
 
 FEATURES = ["period", "day_of_week", "month", "is_weekend", "lag_day", "lag_week"]
+LIVE_RESOURCE = "177f6fa4-ae49-4182-81ea-0c6b35f26ca6"
 
 
 def load_demand(path: str | Path) -> pd.DataFrame:
@@ -19,6 +23,47 @@ def load_demand(path: str | Path) -> pd.DataFrame:
         raise ValueError("The demand file has no usable half-hourly observations.")
     if data.duplicated(["date", "period"]).any():
         raise ValueError("The demand file contains duplicate date and period rows.")
+    return data
+
+
+def fetch_live_demand() -> tuple[pd.DataFrame, pd.DataFrame]:
+    query = urlencode({"resource_id": LIVE_RESOURCE, "limit": 5000})
+    with urlopen(f"https://api.neso.energy/api/3/action/datastore_search?{query}", timeout=20) as response:
+        payload = json.loads(response.read())
+    result = payload.get("result", {})
+    if not payload.get("success") or not isinstance(result.get("records"), list):
+        raise ValueError("NESO returned an invalid demand-data response.")
+    if result.get("total", 0) > len(result["records"]):
+        raise ValueError("NESO returned an incomplete live demand-data page.")
+    return parse_live_records(result["records"])
+
+
+def parse_live_records(records: list[dict]) -> tuple[pd.DataFrame, pd.DataFrame]:
+    records = pd.DataFrame(records)
+    if records.empty:
+        raise ValueError("NESO returned no live demand observations.")
+    records = records.rename(columns={
+        "SETTLEMENT_DATE": "date", "SETTLEMENT_PERIOD": "period", "ND": "demand_mw",
+    })
+    actual = records[records["FORECAST_ACTUAL_INDICATOR"].eq("A")]
+    forecast = records[records["FORECAST_ACTUAL_INDICATOR"].eq("F")]
+    return clean_demand(actual), clean_demand(forecast, allow_empty=True)
+
+
+def clean_demand(data: pd.DataFrame, allow_empty: bool = False) -> pd.DataFrame:
+    data = data[["date", "period", "demand_mw"]].copy()
+    data["date"] = pd.to_datetime(data["date"], errors="coerce").astype("datetime64[ns]")
+    data["period"] = pd.to_numeric(data["period"], errors="coerce")
+    data["demand_mw"] = pd.to_numeric(data["demand_mw"], errors="coerce")
+    data = data.dropna().sort_values(["date", "period"]).reset_index(drop=True)
+    data["period"] = data["period"].astype(int)
+    data = data[data["demand_mw"] > 0].reset_index(drop=True)
+    if data.empty and allow_empty:
+        return data
+    if data.empty or not data["period"].between(1, 50).all():
+        raise ValueError("The demand data has no usable half-hourly observations.")
+    if data.duplicated(["date", "period"]).any():
+        raise ValueError("The demand data contains duplicate date and period rows.")
     return data
 
 
@@ -64,14 +109,17 @@ def forecast_day(data: pd.DataFrame, model: LGBMRegressor, date: str) -> pd.Data
     for period in range(1, 49):
         previous_day = history.get((target - pd.DateOffset(days=1), period))
         previous_week = history.get((target - pd.DateOffset(days=7), period))
-        if pd.isna(previous_day) or pd.isna(previous_week):
+        if pd.isna(previous_week):
             continue
+        used_weekly_fallback = pd.isna(previous_day)
+        if used_weekly_fallback:
+            previous_day = previous_week
         row = pd.DataFrame([{
             "period": period, "day_of_week": target.dayofweek, "month": target.month,
             "is_weekend": int(target.dayofweek >= 5), "lag_day": previous_day,
             "lag_week": previous_week,
         }], columns=FEATURES)
-        rows.append((period, float(model.predict(row)[0])))
+        rows.append((period, float(model.predict(row)[0]), used_weekly_fallback))
     if not rows:
         raise ValueError("This date does not have enough prior data to make a forecast.")
-    return pd.DataFrame(rows, columns=["period", "forecast_mw"])
+    return pd.DataFrame(rows, columns=["period", "forecast_mw", "used_weekly_fallback"])
