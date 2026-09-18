@@ -1,6 +1,7 @@
 from pathlib import Path
 import json
 
+import altair as alt
 import pandas as pd
 import streamlit as st
 from lightgbm import Booster
@@ -65,7 +66,17 @@ chart = result.set_index("period")[["forecast_mw"]].rename(columns={"forecast_mw
 chart.index.name = "Settlement period (30 min)"
 if neso_count:
     chart["NESO forecast"] = result.set_index("period")["neso_forecast_mw"]
-st.line_chart(chart, x_label="Settlement period (30 min)", y_label="Demand (MW)", width="stretch")
+chart_data = chart.rename_axis("period").reset_index().melt(
+    "period", var_name="Forecast", value_name="Demand (MW)")
+forecast_chart = alt.Chart(chart_data).mark_line().encode(
+    x=alt.X("period:Q", title="Settlement period (30 min)",
+            scale=alt.Scale(domain=[1, int(result["period"].max())], clamp=True, nice=False)),
+    y=alt.Y("Demand (MW):Q", title="Demand (MW)", scale=alt.Scale(zero=True)),
+    color=alt.Color("Forecast:N", title=None),
+    tooltip=[alt.Tooltip("period:Q", title="Settlement period", format=".0f"),
+             alt.Tooltip("Forecast:N"), alt.Tooltip("Demand (MW):Q", format=",.0f")],
+).properties(height=360)
+st.altair_chart(forecast_chart, use_container_width=True, theme="streamlit")
 fallback_count = int(predicted["used_weekly_fallback"].sum())
 if fallback_count:
     st.caption(f"For {fallback_count} periods, the latest actual day is incomplete, so the model used the same half-hour period from 7 days earlier.")
