@@ -106,9 +106,13 @@ def forecast_day(data: pd.DataFrame, model: LGBMRegressor, date: str) -> pd.Data
     target = pd.Timestamp(date).normalize()
     history = data.set_index(["date", "period"])["demand_mw"]
     rows = []
-    for period in range(1, 49):
-        previous_day = history.get((target - pd.DateOffset(days=1), period))
-        previous_week = history.get((target - pd.DateOffset(days=7), period))
+    start = target.tz_localize("Europe/London")
+    end = (target + pd.DateOffset(days=1)).tz_localize("Europe/London")
+    period_count = int((end - start).total_seconds() / 1800)
+    for period in range(1, period_count + 1):
+        source_period = min(period, 48)
+        previous_day = history.get((target - pd.DateOffset(days=1), source_period))
+        previous_week = history.get((target - pd.DateOffset(days=7), source_period))
         if pd.isna(previous_week):
             continue
         used_weekly_fallback = pd.isna(previous_day)

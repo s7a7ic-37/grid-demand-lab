@@ -70,3 +70,19 @@ def test_live_forecast_fills_incomplete_latest_day_from_last_week():
     forecast = forecast_day(history, Model(), "2026-11-01")
     assert len(forecast) == 48
     assert forecast["used_weekly_fallback"].sum() == 33
+
+
+def test_forecast_covers_all_periods_on_daylight_saving_fallback():
+    history = pd.DataFrame({
+        "date": pd.to_datetime(["2026-10-18"] * 48),
+        "period": range(1, 49),
+        "demand_mw": range(20000, 20048),
+    })
+
+    class Model:
+        def predict(self, values):
+            return [20000]
+
+    forecast = forecast_day(history, Model(), "2026-10-25")
+    assert len(forecast) == 50
+    assert forecast["period"].iloc[-1] == 50

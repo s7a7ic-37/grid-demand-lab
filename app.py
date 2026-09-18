@@ -30,12 +30,15 @@ if st.button("Refresh live data"):
     get_live_data.clear()
     st.rerun()
 
-with st.spinner("Loading the latest NESO demand data…"):
+with st.status("Fetching live half-hourly demand…", expanded=True) as load_status:
+    st.write("Loading the latest actual readings and NESO forecast.")
     try:
         actual_data, neso_forecast = get_live_data()
     except Exception:
+        load_status.update(label="NESO data is unavailable", state="error")
         st.error("NESO’s live feed could not be loaded. Try refreshing in a moment.")
         st.stop()
+    load_status.update(label="Live demand data ready", state="complete", expanded=False)
 model = get_model()
 metrics = get_metrics()
 latest_date = actual_data["date"].max().normalize()
@@ -43,6 +46,7 @@ target_date = latest_date + pd.DateOffset(days=1)
 
 st.title("Grid Demand Lab")
 st.caption("A daily view of Great Britain’s half-hourly electricity demand, with an ML forecast beside NESO’s forecast.")
+st.caption("Each chart point is one 30-minute settlement period. Refresh fetches new NESO readings and recalculates the forecast with the existing model; readings are cached for up to 6 hours and are not saved permanently.")
 st.caption(f"Latest outturn in NESO’s feed: {latest_date:%d %b %Y}. Their published data can arrive several days after settlement.")
 predicted = forecast_day(actual_data, model, target_date.strftime("%Y-%m-%d"))
 official = neso_forecast[neso_forecast["date"].eq(target_date)][["period", "demand_mw"]]
@@ -58,14 +62,14 @@ if neso_count:
 else:
     st.caption("NESO’s forecast values are currently missing; showing the model forecast on its own.")
 chart = result.set_index("period")[["forecast_mw"]].rename(columns={"forecast_mw": "Model forecast"})
-chart.index.name = "Half-hour settlement period"
+chart.index.name = "Settlement period (30 min)"
 if neso_count:
     chart["NESO forecast"] = result.set_index("period")["neso_forecast_mw"]
-st.line_chart(chart, y_label="Demand (MW)", width="stretch")
+st.line_chart(chart, x_label="Settlement period (30 min)", y_label="Demand (MW)", width="stretch")
 fallback_count = int(predicted["used_weekly_fallback"].sum())
 if fallback_count:
-    st.caption(f"Used last week’s matching periods where today’s feed has not filled {fallback_count} half-hour readings yet.")
+    st.caption(f"For {fallback_count} periods, the latest actual day is incomplete, so the model used the same half-hour period from 7 days earlier.")
 st.metric("Historical holdout MAE · final 28 days of 2025", f"{metrics['model_mae']:,.0f} MW",
-          f"{(1 - metrics['model_mae'] / metrics['week_mae']) * 100:.0f}% lower than last week")
+          f"{(1 - metrics['model_mae'] / metrics['week_mae']) * 100:.0f}% lower than the previous-week baseline")
 st.caption(f"2025 holdout: {metrics['holdout_start']} to {metrics['holdout_end']}. The live model uses 2025 history; its inputs are the latest actual outturns.")
 st.link_button("NESO data and licence", "https://www.neso.energy/data-portal/historic-demand-data")
