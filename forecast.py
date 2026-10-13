@@ -127,3 +127,12 @@ def forecast_day(data: pd.DataFrame, model: LGBMRegressor, date: str) -> pd.Data
     if not rows:
         raise ValueError("This date does not have enough prior data to make a forecast.")
     return pd.DataFrame(rows, columns=["period", "forecast_mw", "used_weekly_fallback"])
+
+
+def settlement_clock_times(date: str, period_count: int) -> list[str]:
+    starts = pd.date_range(pd.Timestamp(date).normalize().tz_localize("Europe/London"),
+                           periods=period_count, freq="30min")
+    labels = [start.strftime("%H:%M") for start in starts]
+    repeated = pd.Series(labels).duplicated(keep=False).tolist()
+    return [f"{label} {start.tzname()}" if duplicate else label
+            for label, start, duplicate in zip(labels, starts, repeated)]

@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from forecast import forecast_day, load_demand, make_features, parse_live_records
+from forecast import forecast_day, load_demand, make_features, parse_live_records, settlement_clock_times
 
 
 def test_features_use_only_previous_day_and_previous_week():
@@ -86,3 +86,13 @@ def test_forecast_covers_all_periods_on_daylight_saving_fallback():
     forecast = forecast_day(history, Model(), "2026-10-25")
     assert len(forecast) == 50
     assert forecast["period"].iloc[-1] == 50
+
+
+def test_clock_labels_keep_half_hour_points_and_distinguish_repeated_hour():
+    ordinary = settlement_clock_times("2026-11-01", 48)
+    assert ordinary[:3] == ["00:00", "00:30", "01:00"]
+    assert ordinary[-1] == "23:30"
+
+    clock_change = settlement_clock_times("2026-10-25", 50)
+    assert "01:00 BST" in clock_change
+    assert "01:00 GMT" in clock_change
