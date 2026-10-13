@@ -69,11 +69,11 @@ if neso_count:
 chart_data = chart.rename_axis("period").reset_index().melt(
     "period", var_name="Forecast", value_name="Demand (MW)")
 time_labels = settlement_clock_times(target_date.strftime("%Y-%m-%d"), len(result))
-chart_data["time"] = chart_data["period"].map(dict(zip(result["period"], time_labels)))
+chart_data["clock_time"] = chart_data["period"].map(dict(zip(result["period"], time_labels)))
 tick_values = [label for index, label in enumerate(time_labels)
                if index % 4 == 0 or label.endswith(("BST", "GMT"))]
 forecast_chart = alt.Chart(chart_data).mark_line().encode(
-    x=alt.X("time:N", title="Time of day (UK)", sort=time_labels,
+    x=alt.X("clock_time:N", title="Time of day (UK)", sort=time_labels,
             axis=alt.Axis(values=tick_values, labelAngle=0)),
     y=alt.Y("Demand (MW):Q", title="Demand (MW)", scale=alt.Scale(zero=True)),
     color=alt.Color("Forecast:N", title=None),
