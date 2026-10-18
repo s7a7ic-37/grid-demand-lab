@@ -12,7 +12,7 @@ ROOT = Path(__file__).parent
 st.set_page_config(page_title="Grid Demand Lab", page_icon="⚡", layout="wide")
 
 
-@st.cache_data(ttl=21600)
+@st.cache_data(ttl=21600, show_spinner=False)
 def get_live_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     return fetch_live_demand()
 
@@ -46,8 +46,8 @@ latest_date = actual_data["date"].max().normalize()
 target_date = latest_date + pd.DateOffset(days=1)
 
 st.title("Grid Demand Lab")
-st.caption("A daily view of Great Britain’s half-hourly electricity demand, with an ML forecast beside NESO’s forecast.")
-st.caption("Each chart point is one 30-minute settlement period. Refresh fetches new NESO readings and recalculates the forecast with the existing model; readings are cached for up to 6 hours and are not saved permanently.")
+st.caption(f"Forecast for {target_date:%d %b} in 30-minute steps, built from recent settled GB demand and a model trained on 2025 history. Compare with NESO’s forecast when available to see expected peaks and where the two forecasts differ.")
+st.caption("Refresh fetches the latest readings and recalculates the forecast. Data is cached for up to 6 hours and is not saved permanently.")
 st.caption(f"Latest outturn in NESO’s feed: {latest_date:%d %b %Y}. Their published data can arrive several days after settlement.")
 predicted = forecast_day(actual_data, model, target_date.strftime("%Y-%m-%d"))
 official = neso_forecast[neso_forecast["date"].eq(target_date)][["period", "demand_mw"]]
@@ -69,17 +69,20 @@ if neso_count:
 chart_data = chart.rename_axis("period").reset_index().melt(
     "period", var_name="Forecast", value_name="Demand (MW)")
 time_labels = settlement_clock_times(target_date.strftime("%Y-%m-%d"), len(result))
-chart_data["clock_time"] = chart_data["period"].map(dict(zip(result["period"], time_labels)))
-tick_values = [label for index, label in enumerate(time_labels)
-               if index % 4 == 0 or label.endswith(("BST", "GMT"))]
-forecast_chart = alt.Chart(chart_data).mark_line().encode(
-    x=alt.X("clock_time:N", title="Time of day (UK)", sort=time_labels,
-            axis=alt.Axis(values=tick_values, labelAngle=0)),
+tick_positions = [index + 1 for index, label in enumerate(time_labels)
+                  if index % 4 == 0 or label.endswith(("BST", "GMT"))]
+tick_labels = {position: time_labels[position - 1] for position in tick_positions}
+label_expr = " : ".join(f"datum.value === {position} ? '{label}'"
+                       for position, label in tick_labels.items()) + " : ''"
+forecast_chart = alt.Chart(chart_data).mark_line(point=True).encode(
+    x=alt.X("period:Q", title="Time of day (UK)",
+            scale=alt.Scale(domain=[1, int(result["period"].max())], clamp=True, nice=False),
+            axis=alt.Axis(values=tick_positions, labelExpr=label_expr, labelAngle=0)),
     y=alt.Y("Demand (MW):Q", title="Demand (MW)", scale=alt.Scale(zero=True)),
     color=alt.Color("Forecast:N", title=None),
     tooltip=[alt.Tooltip("period:Q", title="Settlement period", format=".0f"),
              alt.Tooltip("Forecast:N"), alt.Tooltip("Demand (MW):Q", format=",.0f")],
-).properties(height=360)
+).properties(height=480)
 st.altair_chart(forecast_chart, use_container_width=True, theme="streamlit")
 fallback_count = int(predicted["used_weekly_fallback"].sum())
 if fallback_count:
