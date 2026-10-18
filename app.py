@@ -101,7 +101,7 @@ with page.container():
     st.markdown("""
     <style>
     @media(max-width:640px) {
-      [data-testid="stVegaLiteChart"] path.mark-symbol {
+      [data-testid="stVegaLiteChart"] g.mark-symbol path {
         transform:scale(.65); transform-box:fill-box; transform-origin:center;
       }
     }
