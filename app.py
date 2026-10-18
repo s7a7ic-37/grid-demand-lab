@@ -31,15 +31,36 @@ if st.button("Refresh live data"):
     get_live_data.clear()
     st.rerun()
 
-with st.status("Fetching live half-hourly demand…", expanded=True) as load_status:
-    st.write("Loading the latest actual readings and NESO forecast.")
-    try:
-        actual_data, neso_forecast = get_live_data()
-    except Exception:
-        load_status.update(label="NESO data is unavailable", state="error")
-        st.error("NESO’s live feed could not be loaded. Try refreshing in a moment.")
-        st.stop()
-    load_status.update(label="Live demand data ready", state="complete", expanded=False)
+loading = st.empty()
+loading.markdown("""
+<style>
+.grid-loader { display:flex; align-items:center; gap:14px; padding:16px 18px; border:1px solid #25443f;
+  border-radius:10px; background:linear-gradient(105deg,#0b1718,#102321 55%,#0b1718); color:#e2f4ed; }
+.grid-loader__light { width:10px; height:10px; flex:none; border-radius:50%; background:#55e0bd;
+  box-shadow:0 0 8px #55e0bd,0 0 20px #55e0bd88; animation:grid-pulse 1.4s ease-in-out infinite; }
+.grid-loader__copy { min-width:0; flex:1; }
+.grid-loader__title { margin:0; font-size:14px; font-weight:650; }
+.grid-loader__detail { margin:3px 0 0; color:#a6c3b8; font-size:12px; }
+.grid-loader__track { width:min(22%,120px); height:3px; overflow:hidden; border-radius:4px; background:#25443f; }
+.grid-loader__track::after { display:block; width:45%; height:100%; border-radius:4px; background:#55e0bd;
+  content:""; animation:grid-sweep 1.3s ease-in-out infinite alternate; }
+@keyframes grid-pulse { 50% { opacity:.45; transform:scale(.78); } }
+@keyframes grid-sweep { to { transform:translateX(125%); } }
+@media(prefers-reduced-motion:reduce) { .grid-loader__light,.grid-loader__track::after { animation:none; } }
+</style>
+<div class="grid-loader" role="status" aria-live="polite" aria-busy="true">
+  <span class="grid-loader__light" aria-hidden="true"></span>
+  <div class="grid-loader__copy"><p class="grid-loader__title">Preparing the next-day demand view</p>
+    <p class="grid-loader__detail">Fetching NESO readings and calculating half-hourly estimates</p></div>
+  <div class="grid-loader__track" aria-hidden="true"></div>
+</div>
+""", unsafe_allow_html=True)
+try:
+    actual_data, neso_forecast = get_live_data()
+except Exception:
+    st.error("NESO’s live feed could not be loaded. Try refreshing in a moment.")
+    st.stop()
+loading.empty()
 model = get_model()
 metrics = get_metrics()
 latest_date = actual_data["date"].max().normalize()
@@ -74,7 +95,8 @@ tick_positions = [index + 1 for index, label in enumerate(time_labels)
 tick_labels = {position: time_labels[position - 1] for position in tick_positions}
 label_expr = " : ".join(f"datum.value === {position} ? '{label}'"
                        for position, label in tick_labels.items()) + " : ''"
-forecast_chart = alt.Chart(chart_data).mark_line(point=True).encode(
+forecast_chart = alt.Chart(chart_data).mark_line(
+    point=alt.OverlayMarkDef(filled=True, size=100)).encode(
     x=alt.X("period:Q", title="Time of day (UK)",
             scale=alt.Scale(domain=[1, int(result["period"].max())], clamp=True, nice=False),
             axis=alt.Axis(values=tick_positions, labelExpr=label_expr, labelAngle=0)),
