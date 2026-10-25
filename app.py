@@ -32,8 +32,7 @@ if st.button("Refresh live data"):
     st.rerun()
 st.link_button("← All projects", "https://portfolio.artemislab.co.uk/#projects")
 
-page = st.empty()
-page.markdown("""
+st.markdown("""
 <style>
 .grid-loader { display:grid; min-height:52vh; place-content:center; justify-items:center; gap:16px; padding:32px 20px;
   border:1px solid #25443f; border-radius:14px; background:radial-gradient(ellipse at center,#102321,#0b1114 72%);
@@ -47,9 +46,37 @@ page.markdown("""
   content:""; animation:grid-sweep 1.3s ease-in-out infinite alternate; }
 @keyframes grid-spin { to { transform:rotate(360deg); } }
 @keyframes grid-sweep { to { transform:translateX(125%); } }
+.st-key-grid-report > [data-testid="stElementContainer"] { animation:grid-enter .52s cubic-bezier(.2,.7,.2,1) both; }
+.st-key-grid-report > [data-testid="stElementContainer"]:nth-child(2) { animation-delay:.08s; }
+.st-key-grid-report > [data-testid="stElementContainer"]:nth-child(3) { animation-delay:.16s; }
+.st-key-grid-report > [data-testid="stElementContainer"]:nth-child(4) { animation-delay:.24s; }
+.st-key-grid-report > [data-testid="stElementContainer"]:nth-child(5) { animation-delay:.32s; }
+.st-key-grid-report > [data-testid="stElementContainer"]:nth-child(6) { animation-delay:.40s; }
+.st-key-grid-report > [data-testid="stElementContainer"]:nth-child(7) { animation-delay:.48s; }
+.st-key-grid-report > [data-testid="stElementContainer"]:nth-child(8) { animation-delay:.56s; }
+.st-key-grid-report > [data-testid="stElementContainer"]:nth-child(9) { animation-delay:.64s; }
+.st-key-grid-report > [data-testid="stElementContainer"]:nth-child(10) { animation-delay:.72s; }
+@keyframes grid-enter { from { opacity:0; transform:translateY(9px); } to { opacity:1; transform:translateY(0); } }
 @media(prefers-reduced-motion:reduce) { .grid-loader__ring,.grid-loader__track::after { animation:none; } }
-@media(max-width:640px) { .grid-loader { min-height:58vh; padding:24px 16px; } }
+@media(max-width:640px) {
+  .grid-loader { min-height:58vh; padding:24px 16px; }
+  .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(2) { animation-delay:.06s; }
+  .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(3) { animation-delay:.12s; }
+  .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(4) { animation-delay:.18s; }
+  .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(5) { animation-delay:.24s; }
+  .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(6) { animation-delay:.30s; }
+  .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(7) { animation-delay:.36s; }
+  .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(8) { animation-delay:.42s; }
+  .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(9) { animation-delay:.48s; }
+  .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(10) { animation-delay:.54s; }
+  .st-key-grid-report g.mark-symbol path { transform:scale(.55); transform-box:fill-box; transform-origin:center; }
+}
+@media(prefers-reduced-motion:reduce) { .st-key-grid-report > [data-testid="stElementContainer"] { animation:none; } }
 </style>
+""", unsafe_allow_html=True)
+
+loader = st.empty()
+loader.markdown("""
 <div class="grid-loader" role="status" aria-live="polite" aria-busy="true">
   <span class="grid-loader__ring" aria-hidden="true"></span>
   <p class="grid-loader__title">Loading live grid demand</p>
@@ -61,7 +88,7 @@ page.markdown("""
 try:
     actual_data, neso_forecast = get_live_data()
 except Exception:
-    page.error("NESO’s live feed could not be loaded. Try refreshing in a moment.")
+    loader.error("NESO’s live feed could not be loaded. Try refreshing in a moment.")
     st.stop()
 model = get_model()
 metrics = get_metrics()
@@ -86,32 +113,29 @@ tick_positions = [index + 1 for index, label in enumerate(time_labels)
 tick_labels = {position: time_labels[position - 1] for position in tick_positions}
 label_expr = " : ".join(f"datum.value === {position} ? '{label}'"
                        for position, label in tick_labels.items()) + " : ''"
-forecast_chart = alt.Chart(chart_data).mark_line(
-    point=alt.OverlayMarkDef(filled=True, size=110)).encode(
+base = alt.Chart(chart_data).encode(
     x=alt.X("period:Q", title="Time of day (UK)",
             scale=alt.Scale(domain=[1, int(result["period"].max())], clamp=True, nice=False),
             axis=alt.Axis(values=tick_positions, labelExpr=label_expr, labelAngle=0)),
-    y=alt.Y("Demand (MW):Q", title="Demand (MW)", scale=alt.Scale(zero=True)),
+    y=alt.Y("Demand (MW):Q", title="Demand (MW)", scale=alt.Scale(zero=True)))
+forecast_chart = alt.layer(
+    base.mark_line().encode(
     color=alt.Color("Forecast:N", title=None),
     tooltip=[alt.Tooltip("period:Q", title="Settlement period", format=".0f"),
-             alt.Tooltip("Forecast:N"), alt.Tooltip("Demand (MW):Q", format=",.0f")],
-).properties(height=480)
+             alt.Tooltip("Forecast:N"), alt.Tooltip("Demand (MW):Q", format=",.0f")]),
+    base.mark_circle(size=58, stroke="#d6ecff", strokeWidth=.65).encode(
+        color=alt.Color("Forecast:N", title=None, legend=None),
+        tooltip=[alt.Tooltip("period:Q", title="Settlement period", format=".0f"),
+                 alt.Tooltip("Forecast:N"), alt.Tooltip("Demand (MW):Q", format=",.0f")]),
+).resolve_scale(color="shared").properties(height=480)
 fallback_count = int(predicted["used_weekly_fallback"].sum())
 
-with page.container():
-    st.markdown("""
-    <style>
-    @media(max-width:640px) {
-      [data-testid="stVegaLiteChart"] g.mark-symbol path {
-        transform:scale(.65); transform-box:fill-box; transform-origin:center;
-      }
-    }
-    </style>
-    """, unsafe_allow_html=True)
+with st.container(key="grid-report"):
     st.title("Grid Demand Lab")
     st.caption(f"Forecast for {target_date:%d %b} in 30-minute steps, built from recent settled GB demand and a model trained on 2025 history. Compare with NESO’s forecast when available to see expected peaks and where the two forecasts differ.")
     st.caption("Refresh fetches the latest readings and recalculates the forecast. Data is cached for up to 6 hours and is not saved permanently.")
     st.caption(f"Latest outturn in NESO’s feed: {latest_date:%d %b %Y}. Their published data can arrive several days after settlement.")
+    st.altair_chart(forecast_chart, use_container_width=True, theme="streamlit")
     st.metric(f"Average demand · {target_date:%d %b}", f"{result['forecast_mw'].mean():,.0f} MW")
     if neso_count:
         st.metric("NESO forecast · same day", f"{result['neso_forecast_mw'].mean():,.0f} MW")
@@ -119,7 +143,6 @@ with page.container():
             st.caption(f"NESO has published {neso_count} of 48 half-hour forecasts for this day.")
     else:
         st.caption("NESO’s forecast values are currently missing; showing the model forecast on its own.")
-    st.altair_chart(forecast_chart, use_container_width=True, theme="streamlit")
     if fallback_count:
         st.caption(f"For {fallback_count} periods, the latest actual day is incomplete, so the model used the same half-hour period from 7 days earlier.")
     st.metric("Historical holdout MAE · final 28 days of 2025", f"{metrics['model_mae']:,.0f} MW",
@@ -127,3 +150,4 @@ with page.container():
     st.caption(f"2025 holdout: {metrics['holdout_start']} to {metrics['holdout_end']}. The live model uses 2025 history; its inputs are the latest actual outturns.")
     st.link_button("NESO data and licence", "https://www.neso.energy/data-portal/historic-demand-data")
     st.link_button("Source ↗", "https://github.com/s7a7ic-37/grid-demand-lab")
+    loader.empty()
