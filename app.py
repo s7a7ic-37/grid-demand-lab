@@ -30,6 +30,7 @@ def get_metrics() -> dict:
 if st.button("Refresh live data"):
     get_live_data.clear()
     st.rerun()
+st.link_button("← All projects", "https://portfolio.artemislab.co.uk/#projects")
 
 page = st.empty()
 page.markdown("""
@@ -125,3 +126,4 @@ with page.container():
               f"{(1 - metrics['model_mae'] / metrics['week_mae']) * 100:.0f}% lower than the previous-week baseline")
     st.caption(f"2025 holdout: {metrics['holdout_start']} to {metrics['holdout_end']}. The live model uses 2025 history; its inputs are the latest actual outturns.")
     st.link_button("NESO data and licence", "https://www.neso.energy/data-portal/historic-demand-data")
+    st.link_button("Source ↗", "https://github.com/s7a7ic-37/grid-demand-lab")
