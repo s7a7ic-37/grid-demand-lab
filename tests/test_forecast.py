@@ -138,3 +138,9 @@ def test_clock_labels_keep_half_hour_points_and_distinguish_repeated_hour():
 def test_missing_live_feed_columns_have_a_clear_error():
     with pytest.raises(ValueError, match="required columns"):
         parse_live_records([{"ND": 23000}])
+
+
+def test_non_finite_live_demand_is_rejected():
+    with pytest.raises(ValueError, match="finite"):
+        parse_live_records([{"SETTLEMENT_DATE": "2026-11-05", "SETTLEMENT_PERIOD": 1,
+                             "ND": "inf", "FORECAST_ACTUAL_INDICATOR": "A"}])

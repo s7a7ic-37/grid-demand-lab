@@ -53,11 +53,12 @@ body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] svg.marks) .st-key-
 }
 @media(prefers-reduced-motion:reduce) { .st-key-grid-report > [data-testid="stElementContainer"] { animation:none; } }
 /* Keep layout measurable while Vega renders; reveal the report only when its chart exists. */
-.st-key-grid-report { visibility:hidden; }
+[class*="st-key-grid-report-"] { visibility:hidden; }
+[class*="st-key-grid-report-"] [data-testid="stMetricLabel"] { visibility:inherit; }
 body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] svg.marks) .st-key-grid-report { visibility:visible; }
 body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] svg.marks) [data-testid="stElementContainer"]:has(.grid-loader) { display:none; }
 </style>
-""".replace("st-key-grid-report", f"st-key-{report_key}"), unsafe_allow_html=True)
+""".replace(".st-key-grid-report", f".st-key-{report_key}"), unsafe_allow_html=True)
 
 loader = st.empty()
 loader.markdown("""

@@ -51,6 +51,8 @@ def clean_demand(data: pd.DataFrame, allow_empty: bool = False) -> pd.DataFrame:
     data["period"] = pd.to_numeric(data["period"], errors="coerce")
     data["demand_mw"] = pd.to_numeric(data["demand_mw"], errors="coerce")
     data = data.dropna().sort_values(["date", "period"]).reset_index(drop=True)
+    if not np.isfinite(data[["period", "demand_mw"]]).all().all():
+        raise ValueError("Demand values and periods must be finite numbers.")
     if data["period"].mod(1).ne(0).any():
         raise ValueError("Settlement periods must be whole numbers.")
     data["period"] = data["period"].astype(int)
