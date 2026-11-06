@@ -8,8 +8,9 @@ ROOT = Path(__file__).parent
 st.set_page_config(page_title="Grid Demand Lab", page_icon="⚡", layout="wide")
 
 
-refresh_requested = st.button("Refresh live data")
-st.link_button("← All projects", "https://portfolio.artemislab.co.uk/#projects")
+with st.container(horizontal=True):
+    refresh_requested = st.button("Refresh live data")
+    st.link_button("← All projects", "https://portfolio.artemislab.co.uk/#projects")
 
 report_key = f"grid-report-{uuid4().hex}"
 st.markdown("""
