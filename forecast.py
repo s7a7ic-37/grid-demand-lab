@@ -3,6 +3,7 @@ from urllib.parse import urlencode
 from urllib.request import urlopen
 
 import pandas as pd
+import numpy as np
 import json
 from lightgbm import LGBMRegressor
 from sklearn.metrics import mean_absolute_error
@@ -14,16 +15,7 @@ LIVE_RESOURCE = "177f6fa4-ae49-4182-81ea-0c6b35f26ca6"
 def load_demand(path: str | Path) -> pd.DataFrame:
     data = pd.read_csv(path, usecols=["SETTLEMENT_DATE", "SETTLEMENT_PERIOD", "ND"])
     data.columns = ["date", "period", "demand_mw"]
-    data["date"] = pd.to_datetime(data["date"], errors="coerce").astype("datetime64[ns]")
-    data["period"] = pd.to_numeric(data["period"], errors="coerce")
-    data["demand_mw"] = pd.to_numeric(data["demand_mw"], errors="coerce")
-    data = data.dropna().sort_values(["date", "period"]).reset_index(drop=True)
-    data["period"] = data["period"].astype(int)
-    if data.empty or not data["period"].between(1, 50).all():
-        raise ValueError("The demand file has no usable half-hourly observations.")
-    if data.duplicated(["date", "period"]).any():
-        raise ValueError("The demand file contains duplicate date and period rows.")
-    return data
+    return clean_demand(data)
 
 
 def fetch_live_demand() -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -42,6 +34,9 @@ def parse_live_records(records: list[dict]) -> tuple[pd.DataFrame, pd.DataFrame]
     records = pd.DataFrame(records)
     if records.empty:
         raise ValueError("NESO returned no live demand observations.")
+    required = {"SETTLEMENT_DATE", "SETTLEMENT_PERIOD", "ND", "FORECAST_ACTUAL_INDICATOR"}
+    if not required <= set(records.columns):
+        raise ValueError("NESO demand data is missing required columns.")
     records = records.rename(columns={
         "SETTLEMENT_DATE": "date", "SETTLEMENT_PERIOD": "period", "ND": "demand_mw",
     })
@@ -56,6 +51,8 @@ def clean_demand(data: pd.DataFrame, allow_empty: bool = False) -> pd.DataFrame:
     data["period"] = pd.to_numeric(data["period"], errors="coerce")
     data["demand_mw"] = pd.to_numeric(data["demand_mw"], errors="coerce")
     data = data.dropna().sort_values(["date", "period"]).reset_index(drop=True)
+    if data["period"].mod(1).ne(0).any():
+        raise ValueError("Settlement periods must be whole numbers.")
     data["period"] = data["period"].astype(int)
     data = data[data["demand_mw"] > 0].reset_index(drop=True)
     if data.empty and allow_empty:
@@ -72,8 +69,11 @@ def make_features(data: pd.DataFrame) -> pd.DataFrame:
     result["day_of_week"] = result["date"].dt.dayofweek
     result["month"] = result["date"].dt.month
     result["is_weekend"] = (result["day_of_week"] >= 5).astype(int)
-    result["lag_day"] = result["demand_mw"].shift(48)
-    result["lag_week"] = result["demand_mw"].shift(336)
+    history = data.set_index(["date", "period"])["demand_mw"]
+    for name, days in (("lag_day", 1), ("lag_week", 7)):
+        lag_dates = result["date"].to_numpy(dtype="datetime64[ns]") - np.timedelta64(days, "D")
+        keys = pd.MultiIndex.from_arrays([lag_dates, result["period"]])
+        result[name] = history.reindex(keys).to_numpy()
     return result.dropna(subset=FEATURES)
 
 
@@ -106,10 +106,9 @@ def forecast_day(data: pd.DataFrame, model: LGBMRegressor, date: str) -> pd.Data
     target = pd.Timestamp(date).normalize()
     history = data.set_index(["date", "period"])["demand_mw"]
     rows = []
-    start = target.tz_localize("Europe/London")
-    end = (target + pd.DateOffset(days=1)).tz_localize("Europe/London")
-    period_count = int((end - start).total_seconds() / 1800)
+    period_count = len(settlement_clock_times(date))
     for period in range(1, period_count + 1):
+        # shortcut: extra clock-change periods reuse period 48; use clock-aligned lags for operational forecasting.
         source_period = min(period, 48)
         previous_day = history.get((target - pd.DateOffset(days=1), source_period))
         previous_week = history.get((target - pd.DateOffset(days=7), source_period))
@@ -129,9 +128,9 @@ def forecast_day(data: pd.DataFrame, model: LGBMRegressor, date: str) -> pd.Data
     return pd.DataFrame(rows, columns=["period", "forecast_mw", "used_weekly_fallback"])
 
 
-def settlement_clock_times(date: str, period_count: int) -> list[str]:
-    starts = pd.date_range(pd.Timestamp(date).normalize().tz_localize("Europe/London"),
-                           periods=period_count, freq="30min")
+def settlement_clock_times(date: str) -> list[str]:
+    start = pd.Timestamp(date).normalize().tz_localize("Europe/London")
+    starts = pd.date_range(start, start + pd.DateOffset(days=1), freq="30min", inclusive="left")
     labels = [start.strftime("%H:%M") for start in starts]
     repeated = pd.Series(labels).duplicated(keep=False).tolist()
     return [f"{label} {start.tzname()}" if duplicate else label
