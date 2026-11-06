@@ -5,7 +5,7 @@ from urllib.request import urlopen
 import pandas as pd
 import numpy as np
 import json
-from lightgbm import LGBMRegressor
+from lightgbm import Booster, LGBMRegressor
 from sklearn.metrics import mean_absolute_error
 
 FEATURES = ["period", "day_of_week", "month", "is_weekend", "lag_day", "lag_week"]
@@ -104,7 +104,7 @@ def evaluate(data: pd.DataFrame, holdout_days: int = 28) -> tuple[dict[str, floa
     return metrics, model
 
 
-def forecast_day(data: pd.DataFrame, model: LGBMRegressor, date: str) -> pd.DataFrame:
+def forecast_day(data: pd.DataFrame, model: Booster | LGBMRegressor, date: str) -> pd.DataFrame:
     target = pd.Timestamp(date).normalize()
     history = data.set_index(["date", "period"])["demand_mw"]
     rows = []
@@ -119,15 +119,16 @@ def forecast_day(data: pd.DataFrame, model: LGBMRegressor, date: str) -> pd.Data
         used_weekly_fallback = pd.isna(previous_day)
         if used_weekly_fallback:
             previous_day = previous_week
-        row = pd.DataFrame([{
+        rows.append({
             "period": period, "day_of_week": target.dayofweek, "month": target.month,
             "is_weekend": int(target.dayofweek >= 5), "lag_day": previous_day,
-            "lag_week": previous_week,
-        }], columns=FEATURES)
-        rows.append((period, float(model.predict(row)[0]), used_weekly_fallback))
+            "lag_week": previous_week, "used_weekly_fallback": used_weekly_fallback,
+        })
     if not rows:
         raise ValueError("This date does not have enough prior data to make a forecast.")
-    return pd.DataFrame(rows, columns=["period", "forecast_mw", "used_weekly_fallback"])
+    result = pd.DataFrame(rows)
+    result["forecast_mw"] = model.predict(result[FEATURES])
+    return result[["period", "forecast_mw", "used_weekly_fallback"]]
 
 
 def settlement_clock_times(date: str) -> list[str]:

@@ -27,7 +27,8 @@ st.markdown("""
   content:""; animation:grid-sweep 1.3s ease-in-out infinite alternate; }
 @keyframes grid-spin { to { transform:rotate(360deg); } }
 @keyframes grid-sweep { to { transform:translateX(125%); } }
-body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] svg.marks) .st-key-grid-report > [data-testid="stElementContainer"] { animation:grid-enter .52s cubic-bezier(.2,.7,.2,1) both; }
+:where(body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] g.mark-symbol.role-mark path)) .st-key-grid-report > [data-testid="stElementContainer"] { animation:grid-enter .52s cubic-bezier(.2,.7,.2,1) both; animation-delay:.8s; }
+.st-key-grid-report > [data-testid="stElementContainer"]:first-child { animation-delay:0s; }
 .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(2) { animation-delay:.08s; }
 .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(3) { animation-delay:.16s; }
 .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(4) { animation-delay:.24s; }
@@ -53,11 +54,11 @@ body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] svg.marks) .st-key-
 
 }
 @media(prefers-reduced-motion:reduce) { .st-key-grid-report > [data-testid="stElementContainer"] { animation:none; } }
-/* Keep layout measurable while Vega renders; reveal the report only when its chart exists. */
+/* Keep layout measurable and reveal the report once the chart has data marks. */
 [class*="st-key-grid-report-"] { visibility:hidden; }
 [class*="st-key-grid-report-"] [data-testid="stMetricLabel"] { visibility:inherit; }
-body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] svg.marks) .st-key-grid-report { visibility:visible; }
-body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] svg.marks) [data-testid="stElementContainer"]:has(.grid-loader) { display:none; }
+body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] g.mark-symbol.role-mark path) .st-key-grid-report { visibility:visible; }
+body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] g.mark-symbol.role-mark path) [data-testid="stElementContainer"]:has(.grid-loader) { display:none; }
 </style>
 """.replace(".st-key-grid-report", f".st-key-{report_key}"), unsafe_allow_html=True)
 
@@ -133,11 +134,11 @@ fallback_count = int(predicted["used_weekly_fallback"].sum())
 with st.container(key=report_key):
     st.title("Grid Demand Lab")
     st.caption(f"One-day demand estimate for {target_date:%d %b %Y}: {period_count} half-hour periods in UK local time. LightGBM estimates the day after the latest settled GB demand readings. Compare expected peaks with NESO’s own forecast when available.")
-    st.caption(f"Feed fetched {fetched_at:%d %b %Y at %H:%M %Z}. Refresh fetches new readings and recalculates; the current response is cached for up to 6 hours and is not saved permanently.")
-    st.caption(f"Latest settled demand in this feed: {latest_date:%d %b %Y}. A delayed feed means the plotted day may also be behind today.")
     if len(predicted) < period_count:
         st.caption(f"Model coverage: {len(predicted)} of {period_count} periods. Gaps have insufficient prior history; the mean uses the available predictions.")
     st.altair_chart(forecast_chart, use_container_width=True, theme="streamlit")
+    st.caption(f"Feed fetched {fetched_at:%d %b %Y at %H:%M %Z}. Refresh fetches new readings and recalculates; the current response is cached for up to 6 hours and is not saved permanently.")
+    st.caption(f"Latest settled demand in this feed: {latest_date:%d %b %Y}. A delayed feed means the plotted day may also be behind today.")
     st.metric(f"Mean model estimate · {target_date:%d %b}", f"{result['forecast_mw'].mean():,.0f} MW")
     if neso_count:
         st.metric("NESO forecast · same day", f"{result['neso_forecast_mw'].mean():,.0f} MW")

@@ -16,7 +16,7 @@ def demand_chart(data: pd.DataFrame, time_labels: list[str]) -> alt.LayerChart:
         y=alt.Y("Demand (MW):Q", title="Demand (MW)", scale=alt.Scale(zero=True)),
         color=alt.Color("Forecast:N", title=None, legend=alt.Legend(orient="bottom")),
     )
-    points = base.mark_circle(size=alt.ExprRef(expr="width < 600 ? 18 : 58"),
+    points = base.mark_circle(size=alt.ExprRef(expr="width < 600 ? 12 : 58"),
                               stroke="#d6ecff", strokeWidth=.65)
     nearest = alt.selection_point(nearest=True, on="pointerover", fields=["period"], empty=False)
     hover = alt.Chart(data).transform_pivot(
@@ -28,4 +28,6 @@ def demand_chart(data: pd.DataFrame, time_labels: list[str]) -> alt.LayerChart:
                 + [alt.Tooltip(series, type="quantitative", format=",.0f", title=f"{series} (MW)")
                    for series in data["Forecast"].unique()],
     ).add_params(nearest)
-    return alt.layer(base.mark_line(), points, hover).properties(height=480)
+    # Streamlit's fitted chart can clip left-axis labels without explicit padding.
+    return alt.layer(base.mark_line(), points, hover).properties(
+        height=480, padding={"left": 60, "right": 0, "top": 0, "bottom": 0})

@@ -96,12 +96,18 @@ def test_live_forecast_fills_incomplete_latest_day_from_last_week():
     history = history[~((history["date"] == "2026-10-31") & (history["period"] > 15))]
 
     class Model:
-        def predict(self, values):
-            return [20000]
+        def __init__(self):
+            self.batch_sizes = []
 
-    forecast = forecast_day(history, Model(), "2026-11-01")
+        def predict(self, values):
+            self.batch_sizes.append(len(values))
+            return [20000] * len(values)
+
+    model = Model()
+    forecast = forecast_day(history, model, "2026-11-01")
     assert len(forecast) == 48
     assert forecast["used_weekly_fallback"].sum() == 33
+    assert model.batch_sizes == [48]
 
 
 def test_forecast_covers_all_periods_on_daylight_saving_fallback():
@@ -113,7 +119,7 @@ def test_forecast_covers_all_periods_on_daylight_saving_fallback():
 
     class Model:
         def predict(self, values):
-            return [20000]
+            return [20000] * len(values)
 
     forecast = forecast_day(history, Model(), "2026-10-25")
     assert len(forecast) == 50
