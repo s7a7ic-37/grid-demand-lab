@@ -86,12 +86,12 @@ def get_live_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.Timestamp]:
     return actual, forecast, pd.Timestamp.now(tz="Europe/London")
 
 
-@st.cache_resource
+@st.cache_resource(show_spinner=False)
 def get_model() -> Booster:
     return Booster(model_file=str(ROOT / "models" / "demand_model.txt"))
 
 
-@st.cache_data
+@st.cache_data(show_spinner=False)
 def get_metrics() -> dict:
     return json.loads((ROOT / "models" / "metrics.json").read_text())
 
