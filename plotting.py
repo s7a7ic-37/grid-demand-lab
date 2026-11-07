@@ -18,7 +18,8 @@ def demand_chart(data: pd.DataFrame, time_labels: list[str]) -> alt.LayerChart:
     )
     points = base.mark_circle(size=alt.ExprRef(expr="width < 600 ? 12 : 58"),
                               stroke="#d6ecff", strokeWidth=.65)
-    nearest = alt.selection_point(nearest=True, on="pointerover", fields=["period"], empty=False)
+    nearest = alt.selection_point(nearest=True, on="pointerover, click", fields=["period"],
+                                  value=[{"period": int(data["period"].min())}], clear=False, empty=False)
     hover = alt.Chart(data).transform_pivot(
         "Forecast", value="Demand (MW)", groupby=["period", "UK time"]
     ).mark_rule(color="#a6c3b8").encode(
@@ -28,6 +29,17 @@ def demand_chart(data: pd.DataFrame, time_labels: list[str]) -> alt.LayerChart:
                 + [alt.Tooltip(series, type="quantitative", format=",.0f", title=f"{series} (MW)")
                    for series in data["Forecast"].unique()],
     ).add_params(nearest)
+    labels = []
+    for period, rows in data.groupby("period"):
+        lines = [f"UK time: {rows['UK time'].iloc[0]}"]
+        for _, row in rows.iterrows():
+            value = f"{row['Demand (MW)']:,.0f} MW" if pd.notna(row["Demand (MW)"]) else "not available"
+            lines.append(f"{row['Forecast']}: {value}")
+        labels.append({"period": period, "label": "\n".join(lines)})
+    top = 20 * (data["Forecast"].nunique() + 1) + 12
+    readout = alt.Chart(pd.DataFrame(labels)).mark_text(
+        align="left", baseline="top", lineBreak="\n", lineHeight=20, fontSize=13, color="currentColor",
+    ).encode(x=alt.value(0), y=alt.value(-top + 6), text="label:N").transform_filter(nearest)
     # Streamlit's fitted chart can clip left-axis labels without explicit padding.
-    return alt.layer(base.mark_line(), points, hover).properties(
-        height=480, padding={"left": 60, "right": 0, "top": 0, "bottom": 0})
+    return alt.layer(base.mark_line(), points, hover, readout).properties(
+        height=480, padding={"left": 60, "right": 0, "top": top, "bottom": 0})

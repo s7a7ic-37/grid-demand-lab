@@ -19,6 +19,8 @@ streamlit run app.py
 
 The app fetches the public NESO API at startup and caches it for six hours; use **Refresh live data** to fetch sooner. A partial current day uses the matching periods from last week until today's readings arrive. `pytest` checks time-based features, live feed parsing, duplicate rows and missing history. `train.py` writes the model and holdout metrics under `models/`.
 
+Tap or hover in the plot to select a half-hour. The UK clock time and forecast values remain above the chart after lifting a finger, including an explicit label when NESO's value is unavailable.
+
 Features match the same calendar date and settlement period one day and seven days earlier, rather than assuming every day has 48 rows. UK clock labels cover 46/48/50-period days. Extra autumn clock-change periods currently reuse period 48 for lag inputs; this is an exploratory forecast, not an operational scheduling model.
 
 The reported MAE belongs to a model trained before the final 28-day holdout. The deployed model is then refitted on all available 2025 history. Refresh updates inputs, not the trained model; no live accuracy claim is made.

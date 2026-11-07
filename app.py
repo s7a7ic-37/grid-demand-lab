@@ -138,6 +138,7 @@ with st.container(key=report_key):
     if len(predicted) < period_count:
         st.caption(f"Model coverage: {len(predicted)} of {period_count} periods. Gaps have insufficient prior history; the mean uses the available predictions.")
     st.altair_chart(forecast_chart, use_container_width=True, theme="streamlit")
+    st.caption("Tap the plot or move the pointer to choose a half-hour. Its values stay visible above the chart.")
     st.caption(f"Feed fetched {fetched_at:%d %b %Y at %H:%M %Z}. Refresh fetches new readings and recalculates; the current response is cached for up to 6 hours and is not saved permanently.")
     st.caption(f"Latest settled demand in this feed: {latest_date:%d %b %Y}. A delayed feed means the plotted day may also be behind today.")
     st.metric(f"Mean model estimate · {target_date:%d %b}", f"{result['forecast_mw'].mean():,.0f} MW")
