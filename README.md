@@ -22,3 +22,5 @@ The app fetches the public NESO API at startup and caches it for six hours; use 
 Features match the same calendar date and settlement period one day and seven days earlier, rather than assuming every day has 48 rows. UK clock labels cover 46/48/50-period days. Extra autumn clock-change periods currently reuse period 48 for lag inputs; this is an exploratory forecast, not an operational scheduling model.
 
 The reported MAE belongs to a model trained before the final 28-day holdout. The deployed model is then refitted on all available 2025 history. Refresh updates inputs, not the trained model; no live accuracy claim is made.
+
+The historical backtest table adds a separate 28-day test at each completed quarter-end. Each fold fits the same model settings on earlier data and compares model, previous-day and previous-week MAE on identical periods. The CSV includes the training cutoff and scored period count. These are tests on cleaned historical readings, not a reconstruction of delayed or revised live feeds; no fold is selected to replace the live model.

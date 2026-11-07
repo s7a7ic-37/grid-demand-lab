@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 
 from forecast import forecast_day, load_demand, make_features, parse_live_records, settlement_clock_times
+from forecast import quarterly_backtests
 
 
 def test_features_use_only_previous_day_and_previous_week():
@@ -12,6 +13,40 @@ def test_features_use_only_previous_day_and_previous_week():
     assert featured.iloc[0]["lag_day"] == 288
     assert featured.iloc[0]["lag_week"] == 0
     assert featured.iloc[0]["demand_mw"] == 336
+
+
+@pytest.mark.filterwarnings("error::DeprecationWarning")
+def test_quarterly_backtests_train_before_each_test_and_score_matching_periods(monkeypatch):
+    import forecast
+    data = pd.DataFrame({"date": pd.date_range("2025-01-01", "2025-06-30"), "period": 1})
+    data["demand_mw"] = 1000 + data.index * 10
+    training_ends = []
+
+    class PreviousDayModel:
+        def predict(self, values):
+            return values["lag_day"]
+
+    def fit(training):
+        training_ends.append(training["date"].max())
+        return PreviousDayModel()
+
+    monkeypatch.setattr(forecast, "fit_model", fit)
+    reports = quarterly_backtests(data)
+    assert training_ends == [pd.Timestamp("2025-03-03"), pd.Timestamp("2025-06-02")]
+    assert [row["holdout_end"] for row in reports] == ["2025-03-31", "2025-06-30"]
+    assert [row["holdout_start"] for row in reports] == ["2025-03-04", "2025-06-03"]
+    for row in reports:
+        assert row["training_end"] < row["holdout_start"]
+        assert row["holdout_periods"] == 28
+        assert row["model_mae"] == row["day_mae"] == 10
+        assert row["week_mae"] == 70
+
+
+def test_quarterly_backtests_require_a_completed_quarter():
+    data = pd.DataFrame({"date": pd.date_range("2025-01-01", "2025-02-20"),
+                         "period": 1, "demand_mw": 20000})
+    with pytest.raises(ValueError, match="complete quarter"):
+        quarterly_backtests(data)
 
 
 def test_calendar_lags_survive_a_short_clock_change_day():

@@ -3,5 +3,45 @@
   "day_mae": 1959.7552083333333,
   "week_mae": 2278.2380952380954,
   "holdout_start": "2025-12-04",
-  "holdout_end": "2025-12-31"
+  "holdout_end": "2025-12-31",
+  "training_end": "2025-12-03",
+  "holdout_periods": 1344,
+  "backtests": [
+    {
+      "model_mae": 1673.1536713511189,
+      "day_mae": 2173.428358208955,
+      "week_mae": 3001.2917910447763,
+      "holdout_start": "2025-03-04",
+      "holdout_end": "2025-03-31",
+      "training_end": "2025-03-03",
+      "holdout_periods": 1340
+    },
+    {
+      "model_mae": 1217.9694077404686,
+      "day_mae": 1827.9873511904761,
+      "week_mae": 1640.639880952381,
+      "holdout_start": "2025-06-03",
+      "holdout_end": "2025-06-30",
+      "training_end": "2025-06-02",
+      "holdout_periods": 1344
+    },
+    {
+      "model_mae": 1384.2343402944516,
+      "day_mae": 1750.3489583333333,
+      "week_mae": 1721.936011904762,
+      "holdout_start": "2025-09-03",
+      "holdout_end": "2025-09-30",
+      "training_end": "2025-09-02",
+      "holdout_periods": 1344
+    },
+    {
+      "model_mae": 1604.1384311667036,
+      "day_mae": 1959.7552083333333,
+      "week_mae": 2278.2380952380954,
+      "holdout_start": "2025-12-04",
+      "holdout_end": "2025-12-31",
+      "training_end": "2025-12-03",
+      "holdout_periods": 1344
+    }
+  ]
 }

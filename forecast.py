@@ -89,7 +89,7 @@ def fit_model(training: pd.DataFrame) -> LGBMRegressor:
 
 def evaluate(data: pd.DataFrame, holdout_days: int = 28) -> tuple[dict[str, float | str], LGBMRegressor]:
     featured = make_features(data)
-    cutoff = featured["date"].max().normalize() - pd.Timedelta(days=holdout_days - 1)
+    cutoff = featured["date"].max().normalize() - pd.DateOffset(days=holdout_days - 1)
     train, test = featured[featured["date"] < cutoff], featured[featured["date"] >= cutoff]
     if train.empty or test.empty:
         raise ValueError("Not enough history for a time-based holdout.")
@@ -100,8 +100,20 @@ def evaluate(data: pd.DataFrame, holdout_days: int = 28) -> tuple[dict[str, floa
         "week_mae": mean_absolute_error(test["demand_mw"], test["lag_week"]),
         "holdout_start": cutoff.strftime("%Y-%m-%d"),
         "holdout_end": test["date"].max().strftime("%Y-%m-%d"),
+        "training_end": train["date"].max().strftime("%Y-%m-%d"),
+        "holdout_periods": len(test),
     }
     return metrics, model
+
+
+def quarterly_backtests(data: pd.DataFrame) -> list[dict]:
+    reports = []
+    for end in pd.date_range(data["date"].min(), data["date"].max(), freq=pd.offsets.QuarterEnd()):
+        scores, _ = evaluate(data[data["date"] <= end])
+        reports.append(scores)
+    if not reports:
+        raise ValueError("At least one complete quarter is needed for quarterly backtests.")
+    return reports
 
 
 def forecast_day(data: pd.DataFrame, model: Booster | LGBMRegressor, date: str) -> pd.DataFrame:

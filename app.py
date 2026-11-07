@@ -25,6 +25,7 @@ st.markdown("""
 .grid-loader__track { width:min(260px,65vw); height:4px; overflow:hidden; border-radius:4px; background:#25443f; }
 .grid-loader__track::after { display:block; width:42%; height:100%; border-radius:4px; background:#55e0bd;
   content:""; animation:grid-sweep 1.3s ease-in-out infinite alternate; }
+.stButton button,.stDownloadButton button,.stLinkButton a { min-height:44px; }
 @keyframes grid-spin { to { transform:rotate(360deg); } }
 @keyframes grid-sweep { to { transform:translateX(125%); } }
 :where(body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] g.mark-symbol.role-mark path)) .st-key-grid-report > [data-testid="stElementContainer"] { animation:grid-enter .52s cubic-bezier(.2,.7,.2,1) both; animation-delay:.8s; }
@@ -151,5 +152,20 @@ with st.container(key=report_key):
     st.metric("Historical holdout MAE · final 28 days of 2025", f"{metrics['model_mae']:,.0f} MW",
               f"{(1 - metrics['model_mae'] / metrics['week_mae']) * 100:.0f}% lower than the previous-week baseline")
     st.caption(f"2025 holdout: {metrics['holdout_start']} to {metrics['holdout_end']}. The live model uses 2025 history; its inputs are the latest actual outturns.")
+    if metrics.get("backtests"):
+        with st.expander("Historical backtests — how the error changes across the year"):
+            st.caption("Each quarter-end test covers 28 days. A fresh model is trained only on earlier dates, with the same settings each time. All methods are scored on the same half-hour periods; lower MAE is better.")
+            rows = [{
+                "Test window": f"{row['holdout_start']} to {row['holdout_end']}",
+                "Trained through": row["training_end"],
+                "Periods scored": row["holdout_periods"],
+                "Model MAE (MW)": f"{row['model_mae']:,.0f}",
+                "Previous day MAE (MW)": f"{row['day_mae']:,.0f}",
+                "Previous week MAE (MW)": f"{row['week_mae']:,.0f}",
+            } for row in metrics["backtests"]]
+            st.dataframe(pd.DataFrame(rows), hide_index=True, use_container_width=True)
+            st.caption("Swipe the table sideways on a small screen. These tests use cleaned 2025 history and complete prior-day readings, which can be revised. They do not measure current live accuracy or reproduce delayed feed availability. Downloaded errors are in MW.")
+            st.download_button("Download backtest results", pd.DataFrame(metrics["backtests"]).to_csv(index=False),
+                               file_name="grid-demand-historical-backtests.csv", mime="text/csv", on_click="ignore")
     st.link_button("NESO data and licence", "https://www.neso.energy/data-portal/historic-demand-data")
     st.link_button("Source ↗", "https://github.com/s7a7ic-37/grid-demand-lab")
