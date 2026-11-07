@@ -4,6 +4,8 @@ A live half-hourly Great Britain electricity demand view. It compares a LightGBM
 
 Data: NESO's live Demand Data Update feed for the latest outturns and operational forecasts, plus Historic Demand Data 2025 (`ND`, MW) for training and holdout evaluation. Both are provided under the NESO Open Data Licence. Outturns arrive after settlement and can be revised.
 
+The persistent touch readout and quarterly backtests described below are implemented in source. Their release to the hosted demo is pending.
+
 ## Run
 
 Requires Python 3.12 or newer; deployment uses Python 3.13.
