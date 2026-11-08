@@ -150,3 +150,12 @@ def settlement_clock_times(date: str) -> list[str]:
     repeated = pd.Series(labels).duplicated(keep=False).tolist()
     return [f"{label} {start.tzname()}" if duplicate else label
             for label, start, duplicate in zip(labels, starts, repeated)]
+
+
+def forecast_csv(result: pd.DataFrame, date: str, fetched_at: pd.Timestamp) -> str:
+    snapshot = result[["period", "forecast_mw", "neso_forecast_mw", "used_weekly_fallback"]].copy()
+    snapshot.insert(0, "date", date)
+    clocks = dict(enumerate(settlement_clock_times(date), start=1))
+    snapshot.insert(2, "uk_time", snapshot["period"].map(clocks))
+    snapshot["fetched_at"] = fetched_at.isoformat()
+    return snapshot.to_csv(index=False)

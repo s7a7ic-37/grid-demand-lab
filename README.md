@@ -21,6 +21,8 @@ The app fetches the public NESO API at startup and caches it for six hours; use 
 
 Tap or hover in the plot to select a half-hour. The UK clock time and forecast values remain above the chart after lifting a finger, including an explicit label when NESO's value is unavailable.
 
+**Download this forecast** keeps the displayed day's values as CSV, with settlement periods, UK clock labels, model/NESO forecasts in MW, weekly-fallback flags and the feed-fetch timestamp. Missing forecasts remain blank. Downloading does not refetch data or rerun the model; refresh first if you need a newer snapshot.
+
 Features match the same calendar date and settlement period one day and seven days earlier, rather than assuming every day has 48 rows. UK clock labels cover 46/48/50-period days. Extra autumn clock-change periods currently reuse period 48 for lag inputs; this is an exploratory forecast, not an operational scheduling model.
 
 The reported MAE belongs to a model trained before the final 28-day holdout. The deployed model is then refitted on all available 2025 history. Refresh updates inputs, not the trained model; no live accuracy claim is made.

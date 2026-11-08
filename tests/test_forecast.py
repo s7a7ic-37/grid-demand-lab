@@ -3,6 +3,36 @@ import pytest
 
 from forecast import forecast_day, load_demand, make_features, parse_live_records, settlement_clock_times
 from forecast import quarterly_backtests
+from forecast import forecast_csv
+
+
+@pytest.mark.parametrize('date,count', [('2026-11-01', 48), ('2026-10-25', 50), ('2026-03-29', 46)])
+def test_forecast_csv_preserves_displayed_values_clock_changes_and_missing_data(date, count):
+    import csv
+    from io import StringIO
+
+    result = pd.DataFrame({
+        'period': range(1, count + 1), 'forecast_mw': [23456.789123] * count,
+        'neso_forecast_mw': [24567.123] + [None] * (count - 1),
+        'used_weekly_fallback': pd.Series([True] + [False] * (count - 2) + [None], dtype=object),
+    })
+    result.loc[count - 1, 'forecast_mw'] = float('nan')
+    before = result.copy(deep=True)
+    fetched_at = pd.Timestamp('2026-11-08T01:00:00Z')
+    rows = list(csv.DictReader(StringIO(forecast_csv(result, date, fetched_at))))
+    assert len(rows) == count
+    assert list(rows[0]) == ['date', 'period', 'uk_time', 'forecast_mw', 'neso_forecast_mw', 'used_weekly_fallback', 'fetched_at']
+    assert [row['uk_time'] for row in rows] == settlement_clock_times(date)
+    assert [int(row['period']) for row in rows] == list(range(1, count + 1))
+    assert all(row['date'] == date and row['fetched_at'] == fetched_at.isoformat() for row in rows)
+    assert float(rows[0]['neso_forecast_mw']) == 24567.123
+    assert all(row['neso_forecast_mw'] == '' for row in rows[1:])
+    assert float(rows[0]['forecast_mw']) == 23456.789123
+    assert rows[-1]['forecast_mw'] == ''
+    assert rows[0]['used_weekly_fallback'] == 'True'
+    assert rows[1]['used_weekly_fallback'] == 'False'
+    assert rows[-1]['used_weekly_fallback'] == ''
+    pd.testing.assert_frame_equal(result, before)
 
 
 def test_features_use_only_previous_day_and_previous_week():

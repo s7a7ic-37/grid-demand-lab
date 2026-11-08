@@ -77,7 +77,7 @@ loader.markdown("""
 import pandas as pd
 from lightgbm import Booster
 
-from forecast import fetch_live_demand, forecast_day, settlement_clock_times
+from forecast import fetch_live_demand, forecast_csv, forecast_day, settlement_clock_times
 from plotting import demand_chart
 
 
@@ -139,6 +139,8 @@ with st.container(key=report_key):
         st.caption(f"Model coverage: {len(predicted)} of {period_count} periods. Gaps have insufficient prior history; the mean uses the available predictions.")
     st.altair_chart(forecast_chart, use_container_width=True, theme="streamlit")
     st.caption("Tap the plot or move the pointer to choose a half-hour. Its values stay visible above the chart.")
+    st.download_button("Download this forecast", forecast_csv(result, target_date.strftime("%Y-%m-%d"), fetched_at),
+                       file_name=f"grid-demand-{target_date:%Y-%m-%d}.csv", mime="text/csv", on_click="ignore")
     st.caption(f"Feed fetched {fetched_at:%d %b %Y at %H:%M %Z}. Refresh fetches new readings and recalculates; the current response is cached for up to 6 hours and is not saved permanently.")
     st.caption(f"Latest settled demand in this feed: {latest_date:%d %b %Y}. A delayed feed means the plotted day may also be behind today.")
     st.metric(f"Mean model estimate · {target_date:%d %b}", f"{result['forecast_mw'].mean():,.0f} MW")
