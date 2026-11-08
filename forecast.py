@@ -61,6 +61,10 @@ def clean_demand(data: pd.DataFrame, allow_empty: bool = False) -> pd.DataFrame:
         return data
     if data.empty or not data["period"].between(1, 50).all():
         raise ValueError("The demand data has no usable half-hourly observations.")
+    day_lengths = {day: len(settlement_clock_times(day.strftime("%Y-%m-%d")))
+                   for day in data["date"].drop_duplicates()}
+    if data["period"].gt(data["date"].map(day_lengths)).any():
+        raise ValueError("Settlement periods must fit the UK date's 46, 48 or 50 half-hour periods.")
     if data.duplicated(["date", "period"]).any():
         raise ValueError("The demand data contains duplicate date and period rows.")
     return data

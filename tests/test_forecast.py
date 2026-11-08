@@ -118,6 +118,37 @@ def test_invalid_and_duplicate_rows_are_rejected(tmp_path):
         load_demand(path)
 
 
+@pytest.mark.parametrize('date,periods', [('2026-11-01', 48), ('2026-03-29', 46), ('2026-10-25', 50)])
+def test_live_records_accept_the_last_period_of_each_uk_day(date, periods):
+    actual, forecast = parse_live_records([
+        {'SETTLEMENT_DATE': date, 'SETTLEMENT_PERIOD': periods, 'ND': 24000,
+         'FORECAST_ACTUAL_INDICATOR': 'A'},
+        {'SETTLEMENT_DATE': date, 'SETTLEMENT_PERIOD': periods, 'ND': 25000,
+         'FORECAST_ACTUAL_INDICATOR': 'F'},
+    ])
+    assert actual['period'].tolist() == forecast['period'].tolist() == [periods]
+
+
+@pytest.mark.parametrize('date,periods', [('2026-11-01', 48), ('2026-03-29', 46), ('2026-10-25', 50)])
+@pytest.mark.parametrize('indicator', ['A', 'F'])
+def test_live_records_reject_periods_outside_their_uk_day(date, periods, indicator):
+    with pytest.raises(ValueError):
+        parse_live_records([
+            {'SETTLEMENT_DATE': date, 'SETTLEMENT_PERIOD': 1, 'ND': 24000,
+             'FORECAST_ACTUAL_INDICATOR': 'A'},
+            {'SETTLEMENT_DATE': date, 'SETTLEMENT_PERIOD': periods + 1, 'ND': 25000,
+             'FORECAST_ACTUAL_INDICATOR': indicator},
+        ])
+
+
+@pytest.mark.parametrize('date,invalid', [('2026-11-01', 49), ('2026-03-29', 47)])
+def test_files_reject_periods_outside_their_uk_day(tmp_path, date, invalid):
+    path = tmp_path / 'demand.csv'
+    path.write_text(f'SETTLEMENT_DATE,SETTLEMENT_PERIOD,ND\n{date},{invalid},24000\n')
+    with pytest.raises(ValueError, match='UK date'):
+        load_demand(path)
+
+
 def test_live_records_keep_outturns_and_operator_forecasts_separate():
     actual, forecast = parse_live_records([
         {"SETTLEMENT_DATE": "2026-10-30", "SETTLEMENT_PERIOD": 1, "ND": 24000,
