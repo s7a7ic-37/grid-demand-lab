@@ -19,13 +19,13 @@ python train.py
 streamlit run app.py
 ```
 
-The app fetches the public NESO API at startup and caches a usable forecast for six hours. Use **Refresh live data** to fetch sooner. If a refresh fails, the open session keeps its last good forecast, with its original timestamp and a warning. A partial current day uses the matching periods from last week until today's readings arrive. `pytest` checks time-based features, live feed parsing, duplicate rows and missing history. `train.py` writes the model and holdout metrics under `models/`.
+The app fetches the public NESO API at startup and caches a usable forecast for six hours. Use **Refresh live data** to fetch sooner. If a refresh fails, the open session keeps its last good forecast, with its original timestamp and a warning. When a previous-day reading is missing, the model uses a reading from seven days earlier if available. `pytest` checks time-based features, live feed parsing, duplicate rows and missing history. `train.py` writes the model and holdout metrics under `models/`.
 
 The chart labels 00:00, 06:00, 12:00 and 18:00 in UK time. Tap or hover in the plot to select any half-hour. Its local clock time and forecast values remain above the chart after lifting a finger. The readout marks repeated times as BST or GMT and says when a forecast is unavailable.
 
 **Download this forecast** keeps the displayed day's values as CSV, with settlement periods, UK clock labels, model/NESO forecasts in MW, weekly-fallback flags and the feed-fetch timestamp. Missing forecasts remain blank. Downloading does not refetch data or rerun the model; refresh first if you need a newer snapshot.
 
-Features match the same calendar date and settlement period one day and seven days earlier, rather than assuming every day has 48 rows. UK clock labels cover 46/48/50-period days. Extra autumn clock-change periods currently reuse period 48 for lag inputs; this is an exploratory forecast, not an operational scheduling model.
+Lag inputs look up the settlement period number on the calendar dates one and seven days earlier. A period number can correspond to a different UK clock time around clock changes. The live forecast uses period 48 for lag inputs for periods 49 and 50 on the autumn clock-change day.
 
 Input settlement periods must fit that UK date's 46, 48 or 50 half-hours. This validation applies to both historical files and live actual/forecast records.
 

@@ -203,7 +203,11 @@ with st.container(key=report_key):
     else:
         st.caption(f"NESO comparison unavailable for {target_date:%d %b %Y} in this snapshot. Showing the model forecast.")
     if fallback_count:
-        st.caption(f"For {fallback_count} periods, the latest actual day is incomplete, so the model used the same half-hour period from 7 days earlier.")
+        st.caption(
+            f"For {fallback_count} of {period_count} half-hours, the model used a reading from 7 days earlier "
+            "because the previous-day reading was missing. It looks up period numbers, "
+            "so the UK clock time can differ around clock changes."
+        )
     st.metric("Historical holdout MAE · final 28 days of 2025", f"{metrics['model_mae']:,.0f} MW",
               f"{(1 - metrics['model_mae'] / metrics['week_mae']) * 100:.0f}% lower than the previous-week baseline")
     st.caption(f"2025 holdout: {metrics['holdout_start']} to {metrics['holdout_end']}. The live model uses 2025 history; its inputs are the latest actual outturns.")
