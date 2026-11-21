@@ -81,12 +81,6 @@ from forecast import fetch_live_demand, forecast_csv, forecast_day, settlement_c
 from plotting import demand_chart
 
 
-@st.cache_data(ttl=21600, show_spinner=False)
-def get_live_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.Timestamp]:
-    actual, forecast = fetch_live_demand()
-    return actual, forecast, pd.Timestamp.now(tz="Europe/London")
-
-
 @st.cache_resource(show_spinner=False)
 def get_model() -> Booster:
     return Booster(model_file=str(ROOT / "models" / "demand_model.txt"))
@@ -97,24 +91,51 @@ def get_metrics() -> dict:
     return json.loads((ROOT / "models" / "metrics.json").read_text())
 
 
-if refresh_requested:
-    get_live_data.clear()
+class ForecastUnavailable(Exception):
+    pass
 
+
+def load_report() -> tuple[pd.Timestamp, pd.Timestamp, pd.DataFrame, pd.DataFrame, pd.Timestamp]:
+    try:
+        actual_data, neso_forecast = fetch_live_demand()
+    except Exception as error:
+        raise ForecastUnavailable("NESO’s live feed could not be loaded. Try refreshing in a moment.") from error
+    fetched_at = pd.Timestamp.now(tz="Europe/London")
+    model = get_model()
+    latest_date = actual_data["date"].max().normalize()
+    target_date = latest_date + pd.DateOffset(days=1)
+    try:
+        predicted = forecast_day(actual_data, model, target_date.strftime("%Y-%m-%d"))
+    except ValueError as error:
+        raise ForecastUnavailable("The feed does not contain enough matching prior periods to prepare a forecast. Please try again when more settled readings are available.") from error
+    return latest_date, target_date, predicted, neso_forecast, fetched_at
+
+
+@st.cache_data(ttl=21600, show_spinner=False)
+def get_report(_replacement=None):
+    # Streamlit keeps one cache key because it ignores underscore-prefixed arguments.
+    return load_report() if _replacement is None else _replacement
+
+
+refresh_issue = None
 try:
-    actual_data, neso_forecast, fetched_at = get_live_data()
-except Exception:
-    loader.error("NESO’s live feed could not be loaded. Try refreshing in a moment.")
-    st.stop()
-model = get_model()
+    if refresh_requested:
+        report = load_report()
+        # Only replace the shared cache after the new feed produced a forecast.
+        get_report.clear()
+        get_report(report)
+    else:
+        report = get_report()
+    st.session_state.last_report = report
+except ForecastUnavailable as error:
+    report = st.session_state.get("last_report")
+    if report is None:
+        loader.error(str(error))
+        st.stop()
+    refresh_issue = str(error)
+
+latest_date, target_date, predicted, neso_forecast, fetched_at = report
 metrics = get_metrics()
-latest_date = actual_data["date"].max().normalize()
-target_date = latest_date + pd.DateOffset(days=1)
-
-try:
-    predicted = forecast_day(actual_data, model, target_date.strftime("%Y-%m-%d"))
-except ValueError:
-    loader.error("The feed does not contain enough matching prior periods to prepare a forecast. Please try again when more settled readings are available.")
-    st.stop()
 time_labels = settlement_clock_times(target_date.strftime("%Y-%m-%d"))
 period_count = len(time_labels)
 official = neso_forecast[neso_forecast["date"].eq(target_date)][["period", "demand_mw"]]
@@ -134,6 +155,8 @@ fallback_count = int(predicted["used_weekly_fallback"].sum())
 
 with st.container(key=report_key):
     st.title("Grid Demand Lab")
+    if refresh_issue:
+        st.warning(f"{refresh_issue} Showing the last good forecast from this session, fetched {fetched_at:%d %b %Y at %H:%M %Z}.")
     st.caption(f"One-day demand estimate for {target_date:%d %b %Y}: {period_count} half-hour periods in UK local time. LightGBM estimates the day after the latest settled GB demand readings. Compare expected peaks with NESO’s own forecast when available.")
     if len(predicted) < period_count:
         st.caption(f"Model coverage: {len(predicted)} of {period_count} periods. Gaps have insufficient prior history; the mean uses the available predictions.")

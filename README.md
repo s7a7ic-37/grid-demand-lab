@@ -17,7 +17,7 @@ python train.py
 streamlit run app.py
 ```
 
-The app fetches the public NESO API at startup and caches it for six hours; use **Refresh live data** to fetch sooner. A partial current day uses the matching periods from last week until today's readings arrive. `pytest` checks time-based features, live feed parsing, duplicate rows and missing history. `train.py` writes the model and holdout metrics under `models/`.
+The app fetches the public NESO API at startup and caches a usable forecast for six hours. Use **Refresh live data** to fetch sooner. If a refresh fails, the open session keeps its last good forecast, with its original timestamp and a warning. A partial current day uses the matching periods from last week until today's readings arrive. `pytest` checks time-based features, live feed parsing, duplicate rows and missing history. `train.py` writes the model and holdout metrics under `models/`.
 
 Tap or hover in the plot to select a half-hour. The UK clock time and forecast values remain above the chart after lifting a finger, including an explicit label when NESO's value is unavailable.
 
