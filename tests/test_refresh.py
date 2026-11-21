@@ -13,7 +13,14 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 @pytest.fixture
-def source(monkeypatch):
+def day_ahead(monkeypatch):
+    fetch = Mock(return_value=None)
+    monkeypatch.setattr(forecast, "fetch_day_ahead_forecast", fetch)
+    return fetch
+
+
+@pytest.fixture
+def source(monkeypatch, day_ahead):
     st.cache_data.clear()
     actual = forecast.load_demand(ROOT / "data" / "demand_2025.csv")
     official = actual.iloc[:0].copy()
@@ -102,7 +109,7 @@ def test_neso_comparison_is_scoped_to_the_displayed_snapshot(source):
     assert next(metric for metric in app.metric if metric.label.startswith("NESO forecast")).value == "27,600 MW"
 
 
-def test_neso_comparison_coverage_counts_only_usable_feed_values(source):
+def test_neso_comparison_coverage_counts_only_usable_feed_values(source, day_ahead):
     actual, _ = source.return_value
     other_day = {"SETTLEMENT_DATE": "2025-12-31", "SETTLEMENT_PERIOD": 1, "ND": 27_600}
     records = [{**other_day, "FORECAST_ACTUAL_INDICATOR": "A"}, {**other_day, "FORECAST_ACTUAL_INDICATOR": "F"}]
@@ -119,3 +126,37 @@ def test_neso_comparison_coverage_counts_only_usable_feed_values(source):
         "The NESO mean uses those values."
     ) in [caption.value for caption in app.caption]
     assert next(metric for metric in app.metric if metric.label.startswith("NESO forecast")).value == "25,000 MW"
+    day_ahead.assert_not_called()
+
+
+def test_day_ahead_comparison_stays_with_its_snapshot_across_cache_and_failed_refresh(source, day_ahead):
+    date = "2026-01-01"
+    issue = pd.Timestamp("2025-12-31T16:17:00Z").tz_convert("Europe/London")
+    day_ahead.return_value = (
+        pd.DataFrame({"date": pd.Timestamp(date), "period": range(1, 49), "demand_mw": 23_000}), issue,
+    )
+    app = visit()
+    original = report_details(app)
+
+    def comparison_caption(report):
+        return next(caption.value for caption in report.caption if "via Elexon Insights" in caption.value)
+
+    published = comparison_caption(app)
+    assert "31 Dec 2025 at 16:17 GMT" in published
+    assert "Contains BMRS data © Elexon Limited copyright and database right 2025." in published
+    assert next(metric for metric in app.metric if metric.label == "NESO forecast · day ahead").value == "23,000 MW"
+    assert report_details(visit()) == original
+    source.side_effect = TimeoutError()
+    assert report_details(refresh(app)) == original
+    assert comparison_caption(app) == published
+    day_ahead.assert_called_once_with(date)
+
+
+def test_day_ahead_timeout_does_not_prevent_a_model_snapshot(source, day_ahead):
+    day_ahead.side_effect = TimeoutError()
+    app = visit()
+    report_details(app)
+    assert not app.error
+    assert all(not metric.label.startswith("NESO forecast") for metric in app.metric)
+    assert any("Showing the model forecast" in caption.value for caption in app.caption)
+    day_ahead.assert_called_once_with("2026-01-01")

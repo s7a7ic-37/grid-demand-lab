@@ -1,3 +1,5 @@
+from datetime import timedelta
+from http.client import HTTPException
 from pathlib import Path
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -10,6 +12,8 @@ from sklearn.metrics import mean_absolute_error
 
 FEATURES = ["period", "day_of_week", "month", "is_weekend", "lag_day", "lag_week"]
 LIVE_RESOURCE = "177f6fa4-ae49-4182-81ea-0c6b35f26ca6"
+BMRS_FORECAST_URL = "https://data.elexon.co.uk/bmrs/api/v1/datasets/NDF"
+BMRS_LICENCE = "https://www.elexon.co.uk/bsc/data/balancing-mechanism-reporting-agent/copyright-licence-bmrs-data/"
 
 
 def load_demand(path: str | Path) -> pd.DataFrame:
@@ -43,6 +47,67 @@ def parse_live_records(records: list[dict]) -> tuple[pd.DataFrame, pd.DataFrame]
     actual = records[records["FORECAST_ACTUAL_INDICATOR"].eq("A")]
     forecast = records[records["FORECAST_ACTUAL_INDICATOR"].eq("F")]
     return clean_demand(actual), clean_demand(forecast, allow_empty=True)
+
+
+def fetch_day_ahead_forecast(date: str) -> tuple[pd.DataFrame, pd.Timestamp] | None:
+    target_start = pd.Timestamp(date).tz_localize("Europe/London")
+    previous_start = max(target_start - pd.DateOffset(days=1), target_start - timedelta(hours=24))
+    query = urlencode({
+        "publishDateTimeFrom": previous_start.tz_convert("UTC").isoformat(),
+        "publishDateTimeTo": target_start.tz_convert("UTC").isoformat(),
+        "format": "json",
+    })
+    limit = 2 * 1024 * 1024
+    try:
+        with urlopen(f"{BMRS_FORECAST_URL}?{query}", timeout=6) as response:
+            body = response.read(limit + 1)
+    except HTTPException:
+        return None
+    if len(body) > limit:
+        return None
+    payload = json.loads(body)
+    if not isinstance(payload, dict):
+        return None
+    return parse_day_ahead_records(payload.get("data"), date)
+
+
+def parse_day_ahead_records(records: object, date: str) -> tuple[pd.DataFrame, pd.Timestamp] | None:
+    if not isinstance(records, list) or not all(isinstance(row, dict) for row in records):
+        return None
+    data = pd.DataFrame(records)
+    required = {"dataset", "boundary", "settlementDate", "settlementPeriod", "startTime", "publishTime", "demand"}
+    if not required <= set(data.columns):
+        return None
+
+    starts = settlement_period_starts(date)
+    previous_day = (starts[0] - pd.DateOffset(days=1)).date()
+    rows = data[data["dataset"].eq("NDF") & data["boundary"].eq("N") & data["settlementDate"].eq(date)].copy()
+    rows["issued_at"] = pd.to_datetime(rows["publishTime"], format="ISO8601", errors="coerce", utc=True).dt.tz_convert("Europe/London")
+    rows = rows[rows["issued_at"].dt.date.eq(previous_day)]
+    rows = rows.rename(columns={
+        "settlementDate": "date", "settlementPeriod": "period", "demand": "demand_mw",
+    })
+    rows["period"] = pd.to_numeric(rows["period"], errors="coerce")
+    expected_periods = list(range(1, len(starts) + 1))
+    expected_starts = starts.tz_convert("UTC")
+    for issued_at, issue in rows.sort_values("issued_at", ascending=False).groupby("issued_at", sort=False):
+        issue = issue.sort_values("period")
+        if issue["period"].tolist() != expected_periods:
+            continue
+        reported_starts = pd.DatetimeIndex(pd.to_datetime(issue["startTime"], format="ISO8601", errors="coerce", utc=True))
+        if not reported_starts.equals(expected_starts):
+            continue
+        try:
+            forecast = clean_demand(issue, allow_empty=True)
+        except ValueError:
+            continue
+        if len(forecast) == len(starts):
+            return forecast, issued_at
+    return None
+
+
+def bmrs_attribution(issued_at: pd.Timestamp) -> str:
+    return f"Contains BMRS data © Elexon Limited copyright and database right {issued_at.year}."
 
 
 def clean_demand(data: pd.DataFrame, allow_empty: bool = False) -> pd.DataFrame:
@@ -147,19 +212,27 @@ def forecast_day(data: pd.DataFrame, model: Booster | LGBMRegressor, date: str) 
     return result[["period", "forecast_mw", "used_weekly_fallback"]]
 
 
-def settlement_clock_times(date: str) -> list[str]:
+def settlement_period_starts(date: str) -> pd.DatetimeIndex:
     start = pd.Timestamp(date).normalize().tz_localize("Europe/London")
-    starts = pd.date_range(start, start + pd.DateOffset(days=1), freq="30min", inclusive="left")
+    return pd.date_range(start, start + pd.DateOffset(days=1), freq="30min", inclusive="left")
+
+
+def settlement_clock_times(date: str) -> list[str]:
+    starts = settlement_period_starts(date)
     labels = [start.strftime("%H:%M") for start in starts]
     repeated = pd.Series(labels).duplicated(keep=False).tolist()
     return [f"{label} {start.tzname()}" if duplicate else label
             for label, start, duplicate in zip(labels, starts, repeated)]
 
 
-def forecast_csv(result: pd.DataFrame, date: str, fetched_at: pd.Timestamp) -> str:
+def forecast_csv(result: pd.DataFrame, date: str, fetched_at: pd.Timestamp, *, bmrs_issued_at: pd.Timestamp | None = None) -> str:
     snapshot = result[["period", "forecast_mw", "neso_forecast_mw", "used_weekly_fallback"]].copy()
     snapshot.insert(0, "date", date)
     clocks = dict(enumerate(settlement_clock_times(date), start=1))
     snapshot.insert(2, "uk_time", snapshot["period"].map(clocks))
     snapshot["fetched_at"] = fetched_at.isoformat()
+    if bmrs_issued_at is not None:
+        snapshot["neso_forecast_issued_at"] = bmrs_issued_at.isoformat()
+        snapshot["neso_forecast_attribution"] = bmrs_attribution(bmrs_issued_at)
+        snapshot["neso_forecast_licence"] = BMRS_LICENCE
     return snapshot.to_csv(index=False)

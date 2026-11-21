@@ -80,7 +80,10 @@ loader.markdown("""
 import pandas as pd
 from lightgbm import Booster
 
-from forecast import fetch_live_demand, forecast_csv, forecast_day, settlement_clock_times
+from forecast import (
+    BMRS_LICENCE, bmrs_attribution, fetch_day_ahead_forecast, fetch_live_demand,
+    forecast_csv, forecast_day, settlement_clock_times,
+)
 from plotting import demand_chart
 
 
@@ -98,7 +101,7 @@ class ForecastUnavailable(Exception):
     pass
 
 
-def load_report() -> tuple[pd.Timestamp, pd.Timestamp, pd.DataFrame, pd.DataFrame, pd.Timestamp]:
+def load_report() -> tuple[pd.Timestamp, pd.Timestamp, pd.DataFrame, pd.DataFrame, pd.Timestamp, pd.Timestamp | None]:
     try:
         actual_data, neso_forecast = fetch_live_demand()
     except Exception as error:
@@ -111,7 +114,16 @@ def load_report() -> tuple[pd.Timestamp, pd.Timestamp, pd.DataFrame, pd.DataFram
         predicted = forecast_day(actual_data, model, target_date.strftime("%Y-%m-%d"))
     except ValueError as error:
         raise ForecastUnavailable("The feed does not contain enough matching prior periods to prepare a forecast. Please try again when more settled readings are available.") from error
-    return latest_date, target_date, predicted, neso_forecast, fetched_at
+
+    bmrs_issued_at = None
+    if not neso_forecast["date"].eq(target_date).any():
+        try:
+            comparison = fetch_day_ahead_forecast(target_date.strftime("%Y-%m-%d"))
+        except (OSError, TypeError, ValueError):
+            comparison = None
+        if comparison is not None:
+            neso_forecast, bmrs_issued_at = comparison
+    return latest_date, target_date, predicted, neso_forecast, fetched_at, bmrs_issued_at
 
 
 @st.cache_data(ttl=21600, show_spinner=False)
@@ -137,7 +149,8 @@ except ForecastUnavailable as error:
         st.stop()
     refresh_issue = str(error)
 
-latest_date, target_date, predicted, neso_forecast, fetched_at = report
+latest_date, target_date, predicted, neso_forecast, fetched_at, *comparison_metadata = report
+bmrs_issued_at = comparison_metadata[0] if comparison_metadata else None
 metrics = get_metrics()
 time_labels = settlement_clock_times(target_date.strftime("%Y-%m-%d"))
 period_count = len(time_labels)
@@ -169,13 +182,19 @@ with st.container(key=report_key):
         st.caption(f"Model coverage: {len(predicted)} of {period_count} periods. Gaps have insufficient prior history; the mean uses the available predictions.")
     st.altair_chart(forecast_chart, use_container_width=True, theme="streamlit")
     st.caption("Tap the plot or move the pointer to choose a half-hour. Its values stay visible above the chart.")
-    st.download_button("Download this forecast", forecast_csv(result, target_date.strftime("%Y-%m-%d"), fetched_at),
+    st.download_button("Download this forecast", forecast_csv(result, target_date.strftime("%Y-%m-%d"), fetched_at, bmrs_issued_at=bmrs_issued_at),
                        file_name=f"grid-demand-{target_date:%Y-%m-%d}.csv", mime="text/csv", on_click="ignore")
     st.caption(f"Feed fetched {fetched_at:%d %b %Y at %H:%M %Z}. Refresh fetches new readings and recalculates; the current response is cached for up to 6 hours and is not saved permanently.")
     st.caption(f"Latest settled demand in this feed: {latest_date:%d %b %Y}. A delayed feed means the plotted day may also be behind today.")
     st.metric(f"Mean model estimate · {target_date:%d %b}", f"{result['forecast_mw'].mean():,.0f} MW")
     if neso_count:
-        st.metric("NESO forecast · same day", f"{result['neso_forecast_mw'].mean():,.0f} MW")
+        label = "NESO forecast · day ahead" if bmrs_issued_at is not None else "NESO forecast · same day"
+        st.metric(label, f"{result['neso_forecast_mw'].mean():,.0f} MW")
+        if bmrs_issued_at is not None:
+            st.caption(
+                f"NESO day-ahead forecast published on {bmrs_issued_at:%d %b %Y at %H:%M %Z} via Elexon Insights. "
+                f"{bmrs_attribution(bmrs_issued_at)} [BMRS data licence]({BMRS_LICENCE})."
+            )
         if neso_count < period_count:
             st.caption(
                 f"This snapshot has usable NESO values for {neso_count} of {period_count} half-hours on {target_date:%d %b %Y}. "

@@ -4,6 +4,8 @@ A live half-hourly Great Britain electricity demand view. It compares a LightGBM
 
 Data: NESO's live Demand Data Update feed for the latest outturns and operational forecasts, plus Historic Demand Data 2025 (`ND`, MW) for training and holdout evaluation. Both are provided under the NESO Open Data Licence. Outturns arrive after settlement and can be revised.
 
+When the live feed has no usable comparison for the displayed date, the app tries NESO's half-hourly National Demand Forecast from Elexon Insights. It uses the latest complete issue from up to 24 hours before the UK settlement day. The chart still shows the model if that comparison is unavailable. The display and download include the issue time and BMRS data attribution. [Forecast data](https://bmrs.elexon.co.uk/api-documentation/endpoint/datasets/NDF) · [BMRS data licence](https://www.elexon.co.uk/bsc/data/balancing-mechanism-reporting-agent/copyright-licence-bmrs-data/).
+
 ## Run
 
 Requires Python 3.12 or newer; deployment uses Python 3.13.

@@ -1,6 +1,13 @@
+import csv
+import json
+from datetime import timedelta
+from io import BytesIO, StringIO
+from urllib.parse import parse_qs, urlsplit
+
 import pandas as pd
 import pytest
 
+import forecast
 from forecast import forecast_day, load_demand, make_features, parse_live_records, settlement_clock_times
 from forecast import quarterly_backtests
 from forecast import forecast_csv
@@ -8,9 +15,6 @@ from forecast import forecast_csv
 
 @pytest.mark.parametrize('date,count', [('2026-11-01', 48), ('2026-10-25', 50), ('2026-03-29', 46)])
 def test_forecast_csv_preserves_displayed_values_clock_changes_and_missing_data(date, count):
-    import csv
-    from io import StringIO
-
     result = pd.DataFrame({
         'period': range(1, count + 1), 'forecast_mw': [23456.789123] * count,
         'neso_forecast_mw': [24567.123] + [None] * (count - 1),
@@ -33,6 +37,86 @@ def test_forecast_csv_preserves_displayed_values_clock_changes_and_missing_data(
     assert rows[1]['used_weekly_fallback'] == 'False'
     assert rows[-1]['used_weekly_fallback'] == ''
     pd.testing.assert_frame_equal(result, before)
+
+
+def ndf_records(date, count, issue):
+    starts = pd.date_range(pd.Timestamp(date, tz="Europe/London"), periods=count, freq="30min")
+    return [
+        {
+            "dataset": "NDF", "boundary": "N", "settlementDate": date, "settlementPeriod": period,
+            "startTime": start.tz_convert("UTC").isoformat(), "publishTime": issue, "demand": 23_000 + period,
+        }
+        for period, start in enumerate(starts, start=1)
+    ]
+
+
+@pytest.mark.parametrize("date,count", [
+    ("2026-03-29", 46), ("2026-10-25", 50), ("2026-11-22", 48),
+])
+def test_day_ahead_selects_one_complete_national_issue_for_the_exact_uk_day(date, count):
+    previous_day = pd.Timestamp(date) - timedelta(days=1)
+    issue = f"{previous_day:%Y-%m-%d}T16:17:00Z"
+    selected = ndf_records(date, count, issue)
+    older = ndf_records(date, count, f"{previous_day:%Y-%m-%d}T12:00:00Z")
+    incomplete = ndf_records(date, count - 1, f"{previous_day:%Y-%m-%d}T17:00:00Z")
+    wrong_clock = ndf_records(date, count, f"{previous_day:%Y-%m-%d}T18:00:00Z")
+    wrong_clock[0]["startTime"] = wrong_clock[1]["startTime"]
+    wrong_boundary = ndf_records(date, count, f"{previous_day:%Y-%m-%d}T19:00:00Z")
+    for row in wrong_boundary:
+        row["boundary"] = "Z"
+    target_day = ndf_records(date, count, f"{date}T00:00:00Z")
+    combined = target_day + incomplete + wrong_clock + wrong_boundary + older + selected
+    report, published = forecast.parse_day_ahead_records(list(reversed(combined)), date)
+    assert report["date"].eq(pd.Timestamp(date)).all()
+    assert report["period"].tolist() == list(range(1, count + 1))
+    assert report["demand_mw"].tolist() == list(range(23_001, 23_001 + count))
+    assert published == pd.Timestamp(issue)
+
+
+@pytest.mark.parametrize("bad_value", [{"settlementPeriod": 1}, {"demand": 0}, {"demand": "inf"}])
+def test_day_ahead_disallows_duplicate_periods_and_invalid_demand(bad_value):
+    records = ndf_records("2026-11-22", 48, "2026-11-21T16:17:00Z")
+    records[-1].update(bad_value)
+    assert forecast.parse_day_ahead_records(records, "2026-11-22") is None
+    assert forecast.parse_day_ahead_records(records, "2026-11-23") is None
+
+
+def test_day_ahead_request_caps_publication_range_even_after_a_25_hour_day(monkeypatch):
+    date = "2026-10-26"
+    issue = "2026-10-25T16:17:00Z"
+    records = ndf_records(date, 48, issue)
+    calls = []
+
+    def open_ndf(url, timeout):
+        calls.append((urlsplit(url), timeout))
+        return BytesIO(json.dumps({"data": records}).encode())
+
+    monkeypatch.setattr(forecast, "urlopen", open_ndf)
+    result, published = forecast.fetch_day_ahead_forecast(date)
+    [(url, timeout)] = calls
+    assert url.scheme == "https"
+    assert url.netloc == "data.elexon.co.uk"
+    assert url.path == "/bmrs/api/v1/datasets/NDF"
+    assert parse_qs(url.query) == {
+        "publishDateTimeFrom": ["2026-10-25T00:00:00+00:00"],
+        "publishDateTimeTo": ["2026-10-26T00:00:00+00:00"],
+        "format": ["json"],
+    }
+    assert timeout == 6
+    assert len(result) == 48 and published == pd.Timestamp(issue)
+
+
+def test_day_ahead_csv_identifies_the_published_issue_and_licence():
+    result = pd.DataFrame({
+        "period": [1], "forecast_mw": [23_100], "neso_forecast_mw": [23_000], "used_weekly_fallback": [False],
+    })
+    fetched_at = pd.Timestamp("2026-01-01T13:00:00Z")
+    issued_at = pd.Timestamp("2025-12-31T16:17:00Z")
+    [row] = csv.DictReader(StringIO(forecast_csv(result, "2026-01-01", fetched_at, bmrs_issued_at=issued_at)))
+    assert row["neso_forecast_mw"] == "23000"
+    assert row["neso_forecast_issued_at"] == "2025-12-31T16:17:00+00:00"
+    assert row["neso_forecast_attribution"] == "Contains BMRS data © Elexon Limited copyright and database right 2025."
+    assert row["neso_forecast_licence"] == forecast.BMRS_LICENCE
 
 
 def test_features_use_only_previous_day_and_previous_week():
