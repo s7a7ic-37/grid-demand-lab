@@ -61,6 +61,7 @@ st.markdown("""
 [class*="st-key-grid-report-"] { visibility:hidden; }
 [class*="st-key-grid-report-"] [data-testid="stMetricLabel"] { visibility:inherit; }
 body:has(.st-key-grid-report GRID_PLOT_READY) .st-key-grid-report { visibility:visible; }
+body:has(.st-key-grid-report GRID_PLOT_READY) .st-key-grid-report .grid-report-title { display:block !important; }
 body:has(.st-key-grid-report GRID_PLOT_READY) [data-testid="stElementContainer"]:has(.grid-loader) { display:none; }
 </style>
 """.replace(".st-key-grid-report", f".st-key-{report_key}").replace("GRID_PLOT_READY", plot_ready), unsafe_allow_html=True)
@@ -156,7 +157,11 @@ forecast_chart = demand_chart(chart_data, time_labels)
 fallback_count = int(predicted["used_weekly_fallback"].sum())
 
 with st.container(key=report_key):
-    st.title("Grid Demand Lab")
+    # Streamlit can mount the heading before our stylesheet.
+    st.markdown(
+        '<h1 class="grid-report-title" style="display:none">Grid Demand Lab</h1>',
+        unsafe_allow_html=True,
+    )
     if refresh_issue:
         st.warning(f"{refresh_issue} Showing the last good forecast from this session, fetched {fetched_at:%d %b %Y at %H:%M %Z}.")
     st.caption(f"One-day demand estimate for {target_date:%d %b %Y}: {period_count} half-hour periods in UK local time. LightGBM estimates the day after the latest settled GB demand readings. Compare expected peaks with NESO’s own forecast when available.")
