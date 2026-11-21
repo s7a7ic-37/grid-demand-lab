@@ -14,7 +14,9 @@ def demand_chart(data: pd.DataFrame, time_labels: list[str]) -> alt.LayerChart:
                 scale=alt.Scale(domain=[1, len(time_labels)], clamp=True, nice=False),
                 axis=alt.Axis(values=ticks, labelExpr=labels, labelAngle=0, labelOverlap=False)),
         y=alt.Y("Demand (MW):Q", title="Demand (MW)", scale=alt.Scale(zero=True)),
-        color=alt.Color("Forecast:N", title=None, legend=alt.Legend(orient="bottom")),
+        color=alt.Color("Forecast:N", title=None, legend=alt.Legend(
+            orient="bottom", columns=alt.ExprRef(expr="width < 230 ? 1 : 2"),
+        )),
     )
     points = base.mark_circle(size=alt.ExprRef(expr="width < 600 ? 12 : 58"),
                               stroke="#d6ecff", strokeWidth=.65)
