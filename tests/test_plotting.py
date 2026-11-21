@@ -1,5 +1,7 @@
 import pandas as pd
+import pytest
 
+from forecast import settlement_clock_times
 from plotting import demand_chart
 
 
@@ -28,3 +30,18 @@ def test_chart_keeps_selected_time_and_values_readable_without_a_hover_tooltip()
         {"period": 1, "label": "UK time: 00:00\nModel forecast: 1,000 MW\nNESO forecast: 1,500 MW"},
         {"period": 2, "label": "UK time: 00:30\nModel forecast: 2,000 MW\nNESO forecast: not available"},
     ]
+
+
+@pytest.mark.parametrize(("date", "periods"), [
+    ("2025-03-30", [1, 11, 23, 35]),
+    ("2026-01-01", [1, 13, 25, 37]),
+    ("2025-10-26", [1, 15, 27, 39]),
+])
+def test_axis_uses_even_local_clock_anchors_across_day_lengths(date, periods):
+    labels = settlement_clock_times(date)
+    chart = demand_chart(pd.DataFrame({
+        "period": list(range(1, len(labels) + 1)), "Forecast": "Model forecast", "Demand (MW)": 1000,
+    }), labels).to_dict()
+    axis = chart["layer"][0]["encoding"]["x"]["axis"]
+    assert axis["values"] == periods
+    assert [labels[period - 1] for period in periods] == ["00:00", "06:00", "12:00", "18:00"]

@@ -5,14 +5,14 @@ import pandas as pd
 def demand_chart(data: pd.DataFrame, time_labels: list[str]) -> alt.LayerChart:
     data = data.copy()
     data["UK time"] = data["period"].map(dict(enumerate(time_labels, start=1)))
-    ticks = [index + 1 for index, label in enumerate(time_labels)
-             if index % 4 == 0 or label.endswith(("BST", "GMT"))]
+    clock_ticks = {"00:00", "06:00", "12:00", "18:00"}
+    ticks = [index + 1 for index, label in enumerate(time_labels) if label in clock_ticks]
     labels = " : ".join(f"datum.value === {period} ? '{time_labels[period - 1]}'"
                         for period in ticks) + " : ''"
     base = alt.Chart(data).encode(
         x=alt.X("period:Q", title="Time of day (UK)",
                 scale=alt.Scale(domain=[1, len(time_labels)], clamp=True, nice=False),
-                axis=alt.Axis(values=ticks, labelExpr=labels, labelAngle=0)),
+                axis=alt.Axis(values=ticks, labelExpr=labels, labelAngle=0, labelOverlap=False)),
         y=alt.Y("Demand (MW):Q", title="Demand (MW)", scale=alt.Scale(zero=True)),
         color=alt.Color("Forecast:N", title=None, legend=alt.Legend(orient="bottom")),
     )
