@@ -177,9 +177,12 @@ with st.container(key=report_key):
     if neso_count:
         st.metric("NESO forecast · same day", f"{result['neso_forecast_mw'].mean():,.0f} MW")
         if neso_count < period_count:
-            st.caption(f"NESO has published {neso_count} of {period_count} half-hour forecasts for this day; its mean uses those available periods.")
+            st.caption(
+                f"This snapshot has usable NESO values for {neso_count} of {period_count} half-hours on {target_date:%d %b %Y}. "
+                "The NESO mean uses those values."
+            )
     else:
-        st.caption("NESO’s forecast values are currently missing; showing the model forecast on its own.")
+        st.caption(f"NESO comparison unavailable for {target_date:%d %b %Y} in this snapshot. Showing the model forecast.")
     if fallback_count:
         st.caption(f"For {fallback_count} periods, the latest actual day is incomplete, so the model used the same half-hour period from 7 days earlier.")
     st.metric("Historical holdout MAE · final 28 days of 2025", f"{metrics['model_mae']:,.0f} MW",

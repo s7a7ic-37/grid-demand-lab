@@ -71,3 +71,51 @@ def test_first_load_failure_shows_error_without_a_chart(source):
     assert not app.exception
     assert not app.get("arrow_vega_lite_chart")
     assert "NESO’s live feed could not be loaded" in app.error[0].value
+
+
+def test_neso_comparison_is_scoped_to_the_displayed_snapshot(source):
+    actual, _ = source.return_value
+    official = pd.DataFrame({
+        "date": [pd.Timestamp("2025-12-31")], "period": [1], "demand_mw": [27_600],
+    })
+    source.side_effect = [
+        (actual, official), TimeoutError(), (actual[actual["date"].lt(actual["date"].max())], official),
+    ]
+    app = visit()
+    missing = "NESO comparison unavailable for 01 Jan 2026 in this snapshot. Showing the model forecast."
+    assert missing in [caption.value for caption in app.caption]
+    assert all(not metric.label.startswith("NESO forecast") for metric in app.metric)
+
+    refresh(app)
+    assert "Showing the last good forecast from this session" in app.warning[0].value
+    assert missing in [caption.value for caption in app.caption]
+
+    refresh(app)
+    assert not app.exception
+    assert not app.warning
+    captions = [caption.value for caption in app.caption]
+    assert missing not in captions
+    assert (
+        "This snapshot has usable NESO values for 1 of 48 half-hours on 31 Dec 2025. "
+        "The NESO mean uses those values."
+    ) in captions
+    assert next(metric for metric in app.metric if metric.label.startswith("NESO forecast")).value == "27,600 MW"
+
+
+def test_neso_comparison_coverage_counts_only_usable_feed_values(source):
+    actual, _ = source.return_value
+    other_day = {"SETTLEMENT_DATE": "2025-12-31", "SETTLEMENT_PERIOD": 1, "ND": 27_600}
+    records = [{**other_day, "FORECAST_ACTUAL_INDICATOR": "A"}, {**other_day, "FORECAST_ACTUAL_INDICATOR": "F"}]
+    records += [
+        {"SETTLEMENT_DATE": "2026-01-01", "SETTLEMENT_PERIOD": period, "ND": demand, "FORECAST_ACTUAL_INDICATOR": "F"}
+        for period, demand in [(1, 24_000), (2, 0), (3, 26_000)]
+    ]
+    _, official = forecast.parse_live_records(records)
+    source.return_value = actual, official
+    app = visit()
+    assert not app.exception
+    assert (
+        "This snapshot has usable NESO values for 2 of 48 half-hours on 01 Jan 2026. "
+        "The NESO mean uses those values."
+    ) in [caption.value for caption in app.caption]
+    assert next(metric for metric in app.metric if metric.label.startswith("NESO forecast")).value == "25,000 MW"
