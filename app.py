@@ -13,6 +13,8 @@ with st.container(horizontal=True):
     st.link_button("← All projects", "https://portfolio.artemislab.co.uk/#projects")
 
 report_key = f"grid-report-{uuid4().hex}"
+plot_ready = (':is([data-testid="stVegaLiteChart"] g.mark-symbol.role-mark path, '
+              '[data-testid="stDataFrame"] button[aria-label="Show chart"])')
 st.markdown("""
 <style>
 .grid-loader { display:grid; min-height:52vh; place-content:center; justify-items:center; gap:16px; padding:32px 20px;
@@ -28,7 +30,7 @@ st.markdown("""
 .stButton button,.stDownloadButton button,.stLinkButton a { min-height:44px; }
 @keyframes grid-spin { to { transform:rotate(360deg); } }
 @keyframes grid-sweep { to { transform:translateX(125%); } }
-:where(body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] g.mark-symbol.role-mark path)) .st-key-grid-report > [data-testid="stElementContainer"] { animation:grid-enter .52s cubic-bezier(.2,.7,.2,1) both; animation-delay:.8s; }
+:where(body:has(.st-key-grid-report GRID_PLOT_READY)) .st-key-grid-report > [data-testid="stElementContainer"] { animation:grid-enter .52s cubic-bezier(.2,.7,.2,1) both; animation-delay:.8s; }
 .st-key-grid-report > [data-testid="stElementContainer"]:first-child { animation-delay:0s; }
 .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(2) { animation-delay:.08s; }
 .st-key-grid-report > [data-testid="stElementContainer"]:nth-child(3) { animation-delay:.16s; }
@@ -55,13 +57,13 @@ st.markdown("""
 
 }
 @media(prefers-reduced-motion:reduce) { .st-key-grid-report > [data-testid="stElementContainer"] { animation:none; } }
-/* Keep layout measurable and reveal the report once the chart has data marks. */
+/* Reveal the current report once its chart or chart data table is ready. */
 [class*="st-key-grid-report-"] { visibility:hidden; }
 [class*="st-key-grid-report-"] [data-testid="stMetricLabel"] { visibility:inherit; }
-body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] g.mark-symbol.role-mark path) .st-key-grid-report { visibility:visible; }
-body:has(.st-key-grid-report [data-testid="stVegaLiteChart"] g.mark-symbol.role-mark path) [data-testid="stElementContainer"]:has(.grid-loader) { display:none; }
+body:has(.st-key-grid-report GRID_PLOT_READY) .st-key-grid-report { visibility:visible; }
+body:has(.st-key-grid-report GRID_PLOT_READY) [data-testid="stElementContainer"]:has(.grid-loader) { display:none; }
 </style>
-""".replace(".st-key-grid-report", f".st-key-{report_key}"), unsafe_allow_html=True)
+""".replace(".st-key-grid-report", f".st-key-{report_key}").replace("GRID_PLOT_READY", plot_ready), unsafe_allow_html=True)
 
 loader = st.empty()
 loader.markdown("""
